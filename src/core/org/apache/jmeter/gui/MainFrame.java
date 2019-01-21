@@ -18,10 +18,13 @@
 
 package org.apache.jmeter.gui;
 
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.EventQueue;
 import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.datatransfer.DataFlavor;
@@ -35,12 +38,14 @@ import java.awt.dnd.DropTargetEvent;
 import java.awt.dnd.DropTargetListener;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -69,7 +74,6 @@ import javax.swing.KeyStroke;
 import javax.swing.MenuElement;
 import javax.swing.SwingUtilities;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.TreeCellRenderer;
 import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreePath;
@@ -79,6 +83,8 @@ import org.apache.jmeter.gui.action.ActionNames;
 import org.apache.jmeter.gui.action.ActionRouter;
 import org.apache.jmeter.gui.action.KeyStrokes;
 import org.apache.jmeter.gui.action.LoadDraggedFile;
+import org.apache.jmeter.gui.logging.GuiLogEventListener;
+import org.apache.jmeter.gui.logging.LogEventObject;
 import org.apache.jmeter.gui.tree.JMeterCellRenderer;
 import org.apache.jmeter.gui.tree.JMeterTreeListener;
 import org.apache.jmeter.gui.tree.JMeterTreeNode;
@@ -95,21 +101,17 @@ import org.apache.jmeter.testelement.TestStateListener;
 import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jorphan.gui.ComponentUtil;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.LogEvent;
-import org.apache.log.LogTarget;
-import org.apache.log.Logger;
-import org.apache.log.Priority;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The main JMeter frame, containing the menu bar, test tree, and an area for
  * JMeter component GUIs.
- *
  */
 public class MainFrame extends JFrame implements TestStateListener, Remoteable, DropTargetListener, Clearable, ActionListener {
 
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
     // This is used to keep track of local (non-remote) tests
     // The name is chosen to be an unlikely host-name
@@ -122,19 +124,11 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     private static final String DEFAULT_TITLE = DEFAULT_APP_NAME +
             " (" + JMeterUtils.getJMeterVersion() + ")"; // $NON-NLS-1$ $NON-NLS-2$
 
-    // Allow display/hide toolbar
-    private static final boolean DISPLAY_TOOLBAR =
-            JMeterUtils.getPropDefault("jmeter.toolbar.display", true); // $NON-NLS-1$
-
     // Allow display/hide LoggerPanel
     private static final boolean DISPLAY_LOGGER_PANEL =
             JMeterUtils.getPropDefault("jmeter.loggerpanel.display", false); // $NON-NLS-1$
 
-    // Allow display/hide Log Error/Fatal counter
-    private static final boolean DISPLAY_ERROR_FATAL_COUNTER =
-            JMeterUtils.getPropDefault("jmeter.errorscounter.display", true); // $NON-NLS-1$
-
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(MainFrame.class);
 
     /** The menu bar. */
     private JMeterMenuBar menuBar;
@@ -171,36 +165,26 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     /** A message dialog shown while JMeter threads are stopping. */
     private JDialog stoppingMessage;
 
-    private JLabel totalThreads;
-    private JLabel activeThreads;
+    private JLabel activeAndTotalThreads;
 
     private JMeterToolBar toolbar;
 
-    /**
-     * Label at top right showing test duration
-     */
+    /** Label at top right showing test duration */
     private JLabel testTimeDuration;
 
-    /**
-     * Indicator for Log errors and Fatals
-     */
+    /** Indicator for Log errors and Fatals */
     private JButton warnIndicator;
-    /**
-     * Counter
-     */
-    private JLabel errorsOrFatalsLabel;
-    /**
-     * LogTarget that receives ERROR or FATAL
-     */
+
+    /** LogTarget that receives ERROR or FATAL */
     private transient ErrorsAndFatalsCounterLogTarget errorsAndFatalsCounterLogTarget;
     
-    private javax.swing.Timer computeTestDurationTimer = new javax.swing.Timer(1000, new java.awt.event.ActionListener() {
-        
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            computeTestDuration();
-        }
-    });
+    private javax.swing.Timer computeTestDurationTimer = new javax.swing.Timer(1000, 
+            this::computeTestDuration);
+    
+    public AtomicInteger errorOrFatal = new AtomicInteger(0);
+
+    private javax.swing.Timer refreshErrorsTimer = new javax.swing.Timer(1000, 
+            this::refreshErrors);
 
     /**
      * Create a new JMeter frame.
@@ -211,20 +195,18 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
      *            the listener for the test tree
      */
     public MainFrame(TreeModel treeModel, JMeterTreeListener treeListener) {
-
-        // TODO: Make the running indicator its own class instead of a JButton
         runningIndicator = new JButton(stoppedIcon);
         runningIndicator.setFocusable(false);
         runningIndicator.setBorderPainted(false);
+        runningIndicator.setContentAreaFilled(false);
         runningIndicator.setMargin(new Insets(0, 0, 0, 0));
 
         testTimeDuration = new JLabel("00:00:00"); //$NON-NLS-1$
+        testTimeDuration.setToolTipText(JMeterUtils.getResString("duration_tooltip")); //$NON-NLS-1$
+        testTimeDuration.setBorder(javax.swing.BorderFactory.createBevelBorder(javax.swing.border.BevelBorder.LOWERED));
 
-        totalThreads = new JLabel("0"); // $NON-NLS-1$
-        totalThreads.setToolTipText(JMeterUtils.getResString("total_threads_tooltip")); // $NON-NLS-1$
-
-        activeThreads = new JLabel("0"); // $NON-NLS-1$
-        activeThreads.setToolTipText(JMeterUtils.getResString("active_threads_tooltip")); // $NON-NLS-1$
+        activeAndTotalThreads = new JLabel("0/0"); // $NON-NLS-1$
+        activeAndTotalThreads.setToolTipText(JMeterUtils.getResString("active_total_threads_tooltip")); // $NON-NLS-1$
 
         warnIndicator = new JButton(warningIcon);
         warnIndicator.setMargin(new Insets(0, 0, 0, 0));
@@ -236,21 +218,42 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         warnIndicator.setToolTipText(JMeterUtils.getResString("error_indicator_tooltip")); // $NON-NLS-1$
         warnIndicator.addActionListener(this);
 
-        errorsOrFatalsLabel = new JLabel("0"); // $NON-NLS-1$
-        errorsOrFatalsLabel.setToolTipText(JMeterUtils.getResString("error_indicator_tooltip")); // $NON-NLS-1$
-
         tree = makeTree(treeModel, treeListener);
 
         GuiPackage.getInstance().setMainFrame(this);
         init();
         initTopLevelDndHandler();
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+
+        addMouseWheelListener(e -> {
+            if (e.isControlDown()) {
+                final float scale = 1.1f;
+                int rotation = e.getWheelRotation();
+                if (rotation > 0) { // DOWN
+                    JMeterUtils.applyScaleOnFonts(1.0f / scale);
+                } else if (rotation < 0) { // UP
+                    JMeterUtils.applyScaleOnFonts(scale);
+                }
+                e.consume();
+            }
+        });
     }
 
-    protected void computeTestDuration() {
+    /**
+     * Refresh errors label
+     * @param evt {@link ActionEvent}
+     */
+    private void refreshErrors(ActionEvent evt) {
+        if (errorOrFatal.get() > 0) {
+            warnIndicator.setForeground(Color.RED);
+            warnIndicator.setText(Integer.toString(errorOrFatal.get()));
+        }
+    }
+    
+    protected void computeTestDuration(ActionEvent evt) {
         long startTime = JMeterContextService.getTestStartTime();
         if (startTime > 0) {
-            long elapsedSec = (System.currentTimeMillis()-startTime + 500) / 1000; // rounded seconds
+            long elapsedSec = (System.currentTimeMillis() - startTime + 500) / 1000; // rounded seconds
             testTimeDuration.setText(JOrphanUtils.formatDuration(elapsedSec));
         }
     }
@@ -352,16 +355,17 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
      * Close the currently selected menu.
      */
     public void closeMenu() {
-        if (menuBar.isSelected()) {
-            MenuElement[] menuElement = menuBar.getSubElements();
-            if (menuElement != null) {
-                for (MenuElement element : menuElement) {
-                    JMenu menu = (JMenu) element;
-                    if (menu.isSelected()) {
-                        menu.setPopupMenuVisible(false);
-                        menu.setSelected(false);
-                        break;
-                    }
+        if (!menuBar.isSelected()) {
+            return;
+        }
+        MenuElement[] menuElement = menuBar.getSubElements();
+        if (menuElement != null) {
+            for (MenuElement element : menuElement) {
+                JMenu menu = (JMenu) element;
+                if (menu.isSelected()) {
+                    menu.setPopupMenuVisible(false);
+                    menu.setSelected(false);
+                    break;
                 }
             }
         }
@@ -388,24 +392,19 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         stoppingMessage.getContentPane().add(stopLabel);
         stoppingMessage.pack();
         ComponentUtil.centerComponentInComponent(this, stoppingMessage);
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                if (stoppingMessage != null) { // TODO - how can this be null?
+        SwingUtilities.invokeLater(() -> {
+                if (stoppingMessage != null) {
                     stoppingMessage.setVisible(true);
                 }
-            }
         });
     }
 
     public void updateCounts() {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                activeThreads.setText(Integer.toString(JMeterContextService.getNumberOfThreads()));
-                totalThreads.setText(Integer.toString(JMeterContextService.getTotalThreads()));
-            }
-        });
+        SwingUtilities.invokeLater(() ->
+                activeAndTotalThreads.setText(
+                        String.format("%d/%d",
+                                JMeterContextService.getNumberOfThreads(),
+                                JMeterContextService.getTotalThreads())));
     }
 
     public void setMainPanel(JComponent comp) {
@@ -442,8 +441,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         hosts.add(host);
         computeTestDurationTimer.start();
         runningIndicator.setIcon(runningIcon);
-        activeThreads.setText("0"); // $NON-NLS-1$
-        totalThreads.setText("0"); // $NON-NLS-1$
+        activeAndTotalThreads.setText("0/0"); // $NON-NLS-1$
         menuBar.setRunning(true, host);
         if (LOCAL.equals(host)) {
             toolbar.setLocalTestStarted(true);
@@ -473,7 +471,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     @Override
     public void testEnded(String host) {
         hosts.remove(host);
-        if (hosts.size() == 0) {
+        if (hosts.isEmpty()) {
             runningIndicator.setIcon(stoppedIcon);
             JMeterContextService.endTest();
             computeTestDurationTimer.stop();
@@ -516,17 +514,9 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         mainPanel = createMainPanel();
 
         logPanel = createLoggerPanel();
-        if (DISPLAY_ERROR_FATAL_COUNTER) {
-            errorsAndFatalsCounterLogTarget = new ErrorsAndFatalsCounterLogTarget();
-            LoggingManager.addLogTargetToRootLogger(new LogTarget[]{
-                logPanel,
-                errorsAndFatalsCounterLogTarget
-                 });
-        } else {
-            LoggingManager.addLogTargetToRootLogger(new LogTarget[]{
-                    logPanel
-                     });
-        }
+        errorsAndFatalsCounterLogTarget = new ErrorsAndFatalsCounterLogTarget();
+        GuiPackage.getInstance().getLogEventBus().registerEventListener(logPanel);
+        GuiPackage.getInstance().getLogEventBus().registerEventListener(errorsAndFatalsCounterLogTarget);
 
         topAndDown.setTopComponent(mainPanel);
         topAndDown.setBottomComponent(logPanel);
@@ -546,8 +536,8 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         setTitle(DEFAULT_TITLE);
         setIconImage(JMeterUtils.getImage("icon-apache.png").getImage());// $NON-NLS-1$
         setWindowTitle(); // define AWT WM_CLASS string
+        refreshErrorsTimer.start();
     }
-
 
     /**
      * Support for Test Plan Dnd
@@ -578,27 +568,23 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     private Component createToolBar() {
         Box toolPanel = new Box(BoxLayout.X_AXIS);
         // add the toolbar
-        this.toolbar = JMeterToolBar.createToolbar(DISPLAY_TOOLBAR);
+        this.toolbar = JMeterToolBar.createToolbar(true);
         GuiPackage guiInstance = GuiPackage.getInstance();
         guiInstance.setMainToolbar(toolbar);
-        guiInstance.getMenuItemToolbar().getModel().setSelected(DISPLAY_TOOLBAR);
         toolPanel.add(toolbar);
 
-        toolPanel.add(Box.createRigidArea(new Dimension(10, 15)));
+        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
         toolPanel.add(Box.createGlue());
 
         toolPanel.add(testTimeDuration);
-        toolPanel.add(Box.createRigidArea(new Dimension(20, 15)));
+        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
 
-        if (DISPLAY_ERROR_FATAL_COUNTER) {
-            toolPanel.add(errorsOrFatalsLabel);
-            toolPanel.add(warnIndicator);
-            toolPanel.add(Box.createRigidArea(new Dimension(20, 15)));
-        }
-        toolPanel.add(activeThreads);
-        toolPanel.add(new JLabel(" / "));
-        toolPanel.add(totalThreads);
-        toolPanel.add(Box.createRigidArea(new Dimension(10, 15)));
+        toolPanel.add(warnIndicator);
+        warnIndicator.setText("0");
+        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
+
+        toolPanel.add(activeAndTotalThreads);
+        toolPanel.add(Box.createRigidArea(new Dimension(5, 15)));
         toolPanel.add(runningIndicator);
         return toolPanel;
     }
@@ -664,13 +650,13 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
                             String comment = ((TestElement) testElement).getComment();
                             if (comment != null && comment.length() > 0) {
                                 return comment;
-                                }
                             }
                         }
                     }
-                return null;
                 }
-            };
+                return null;
+            }
+        };
         treevar.setToolTipText("");
         treevar.setCellRenderer(getCellRenderer());
         treevar.setRootVisible(false);
@@ -692,39 +678,7 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     }
 
     private void addQuickComponentHotkeys(JTree treevar) {
-        Action quickComponent = new AbstractAction("Quick Component") {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                String propname = "gui.quick_" + actionEvent.getActionCommand();
-                String comp = JMeterUtils.getProperty(propname);
-                log.debug("Event " + propname + ": " + comp);
-
-                if (comp == null) {
-                    log.warn("No component set through property: " + propname);
-                    return;
-                }
-
-                GuiPackage guiPackage = GuiPackage.getInstance();
-                try {
-                    guiPackage.updateCurrentNode();
-                    TestElement testElement = guiPackage.createTestElement(SaveService.aliasToClass(comp));
-                    JMeterTreeNode parentNode = guiPackage.getCurrentNode();
-                    while (!MenuFactory.canAddTo(parentNode, testElement)) {
-                        parentNode = (JMeterTreeNode) parentNode.getParent();
-                    }
-                    if (parentNode.getParent() == null) {
-                        log.debug("Cannot add element on very top level");
-                    } else {
-                        JMeterTreeNode node = guiPackage.getTreeModel().addComponent(testElement, parentNode);
-                        guiPackage.getMainFrame().getTree().setSelectionPath(new TreePath(node.getPath()));
-                    }
-                } catch (Exception err) {
-                    log.warn("Failed to perform quick component add: " + comp, err); // $NON-NLS-1$
-                }
-            }
-        };
+        Action quickComponent = new QuickComponent("Quick Component");
 
         InputMap inputMap = treevar.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         KeyStroke[] keyStrokes = new KeyStroke[]{KeyStrokes.CTRL_0,
@@ -743,8 +697,63 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
      * @return a renderer to draw the test tree nodes
      */
     private TreeCellRenderer getCellRenderer() {
-        DefaultTreeCellRenderer rend = new JMeterCellRenderer();
-        return rend;
+        return new JMeterCellRenderer();
+    }
+
+    private static final class QuickComponent extends AbstractAction {
+        private static final long serialVersionUID = 1L;
+
+        private QuickComponent(String name) {
+            super(name);
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent actionEvent) {
+            String propname = "gui.quick_" + getCurrentKey(actionEvent);
+            String comp = JMeterUtils.getProperty(propname);
+            log.debug("Event {}: {}", propname, comp);
+
+            if (comp == null) {
+                log.warn("No component set through property: {}", propname);
+                return;
+            }
+
+            GuiPackage guiPackage = GuiPackage.getInstance();
+            try {
+                guiPackage.updateCurrentNode();
+                TestElement testElement = guiPackage.createTestElement(SaveService.aliasToClass(comp));
+                JMeterTreeNode parentNode = guiPackage.getCurrentNode();
+                while (!MenuFactory.canAddTo(parentNode, testElement)) {
+                    parentNode = (JMeterTreeNode) parentNode.getParent();
+                }
+                if (parentNode.getParent() == null) {
+                    log.debug("Cannot add element on very top level");
+                } else {
+                    JMeterTreeNode node = guiPackage.getTreeModel().addComponent(testElement, parentNode);
+                    guiPackage.getMainFrame().getTree().setSelectionPath(new TreePath(node.getPath()));
+                }
+            } catch (Exception err) {
+                log.warn("Failed to perform quick component add: {}", comp, err); // $NON-NLS-1$
+            }
+        }
+
+        /*
+         * Bug 62336: On Windows CTRL+6 doesn't give us an actionCommand, so
+         * we have to try harder and read the KeyEvent from the EventQueue
+         */
+        private String getCurrentKey(ActionEvent actionEvent) {
+            String actionCommand = actionEvent.getActionCommand();
+            if (actionCommand != null) {
+                return actionCommand;
+            }
+            AWTEvent currentEvent = EventQueue.getCurrentEvent();
+            if (currentEvent instanceof KeyEvent) {
+                KeyEvent keyEvent = (KeyEvent) currentEvent;
+                return KeyEvent.getKeyText(keyEvent.getKeyCode());
+            }
+            log.debug("No keycode could be found for this actionEvent {}", actionEvent);
+            return "NONE";
+        }
     }
 
     /**
@@ -785,25 +794,20 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
      */
     @Override
     public void drop(DropTargetDropEvent dtde) {
-        try {
-            Transferable tr = dtde.getTransferable();
-            DataFlavor[] flavors = tr.getTransferDataFlavors();
-            for (DataFlavor flavor : flavors) {
-                // Check for file lists specifically
-                if (flavor.isFlavorJavaFileListType()) {
-                    dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
-                    try {
-                        openJmxFilesFromDragAndDrop(tr);
-                    } finally {
-                        dtde.dropComplete(true);
-                    }
-                    return;
-                }
+        Transferable tr = dtde.getTransferable();
+        boolean anyFlavourIsJavaFileList =
+                Arrays.stream(tr.getTransferDataFlavors())
+                        .anyMatch(DataFlavor::isFlavorJavaFileListType);
+        if (anyFlavourIsJavaFileList) {
+            dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
+            try {
+                openJmxFilesFromDragAndDrop(tr);
+            } catch (UnsupportedFlavorException | IOException e) {
+                log.warn("Dnd failed", e);
+            } finally {
+                dtde.dropComplete(true);
             }
-        } catch (UnsupportedFlavorException | IOException e) {
-            log.warn("Dnd failed" , e);
         }
-
     }
 
     public boolean openJmxFilesFromDragAndDrop(Transferable tr) throws UnsupportedFlavorException, IOException {
@@ -815,7 +819,9 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
         }
         File file = files.get(0);
         if (!file.getName().endsWith(".jmx")) {
-            log.warn("Importing file:" + file.getName()+ "from DnD failed because file extension does not end with .jmx");
+            if (log.isWarnEnabled()) {
+                log.warn("Importing file, {}, from DnD failed because file extension does not end with .jmx", file.getName());
+            }
             return false;
         }
 
@@ -831,44 +837,31 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     }
 
     /**
-     *
+     * ErrorsAndFatalsCounterLogTarget.
      */
-    public final class ErrorsAndFatalsCounterLogTarget implements LogTarget, Clearable {
-        public AtomicInteger errorOrFatal = new AtomicInteger(0);
+    public final class ErrorsAndFatalsCounterLogTarget implements GuiLogEventListener, Clearable {
 
         @Override
-        public void processEvent(LogEvent event) {
-            if(event.getPriority().equals(Priority.ERROR) ||
-                    event.getPriority().equals(Priority.FATAL_ERROR)) {
-                final int newValue = errorOrFatal.incrementAndGet();
-                SwingUtilities.invokeLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        errorsOrFatalsLabel.setText(Integer.toString(newValue));
-                    }
-                });
+        public void processLogEvent(LogEventObject logEventObject) {
+            if (logEventObject.isMoreSpecificThanError()) {
+                errorOrFatal.incrementAndGet();
             }
         }
 
         @Override
         public void clearData() {
             errorOrFatal.set(0);
-            SwingUtilities.invokeLater(new Runnable() {
-                @Override
-                public void run() {
-                    errorsOrFatalsLabel.setText(Integer.toString(errorOrFatal.get()));
-                }
+            SwingUtilities.invokeLater(() -> {
+                warnIndicator.setForeground(null);
+                warnIndicator.setText(Integer.toString(errorOrFatal.get()));
             });
         }
     }
 
-
     @Override
     public void clearData() {
         logPanel.clear();
-        if (DISPLAY_ERROR_FATAL_COUNTER) {
-            errorsAndFatalsCounterLogTarget.clearData();
-        }
+        errorsAndFatalsCounterLogTarget.clearData();
     }
 
     /**
@@ -877,7 +870,8 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
     @Override
     public void actionPerformed(ActionEvent event) {
         if (event.getSource() == warnIndicator) {
-            ActionRouter.getInstance().doActionNow(new ActionEvent(event.getSource(), event.getID(), ActionNames.LOGGER_PANEL_ENABLE_DISABLE));
+            ActionRouter.getInstance().doActionNow(
+                    new ActionEvent(event.getSource(), event.getID(), ActionNames.LOGGER_PANEL_ENABLE_DISABLE));
         }
     }
 
@@ -886,24 +880,24 @@ public class MainFrame extends JFrame implements TestStateListener, Remoteable, 
      */
     private void setWindowTitle() {
         Class<?> xtoolkit = Toolkit.getDefaultToolkit().getClass();
-        if (xtoolkit.getName().equals("sun.awt.X11.XToolkit")) { // $NON-NLS-1$
+        if (xtoolkit.getName().equals("sun.awt.X11.XToolkit")) { // NOSONAR (we don't want to depend on native LAF) $NON-NLS-1$
             try {
                 final Field awtAppClassName = xtoolkit.getDeclaredField("awtAppClassName"); // $NON-NLS-1$
                 awtAppClassName.setAccessible(true);
                 awtAppClassName.set(null, DEFAULT_APP_NAME);
             } catch (NoSuchFieldException | IllegalAccessException nsfe) {
-                log.warn("Error awt title: " + nsfe); // $NON-NLS-1$
+                if (log.isWarnEnabled()) {
+                    log.warn("Error awt title: {}", nsfe.toString()); // $NON-NLS-1$
+                }
             }
-       }
+        }
     }
 
     /**
      * Update Undo/Redo icons state
-     * 
-     * @param canUndo
-     *            Flag whether the undo button should be enabled
-     * @param canRedo
-     *            Flag whether the redo button should be enabled
+     *
+     * @param canUndo Flag whether the undo button should be enabled
+     * @param canRedo Flag whether the redo button should be enabled
      */
     public void updateUndoRedoIcons(boolean canUndo, boolean canRedo) {
         toolbar.updateUndoRedoIcons(canUndo, canRedo);

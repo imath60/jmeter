@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.engine.util.ConfigMergabilityIndicator;
 import org.apache.jmeter.protocol.jdbc.AbstractJDBCTestElement;
@@ -33,9 +34,7 @@ import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.samplers.Sampler;
 import org.apache.jmeter.testbeans.TestBean;
 import org.apache.jmeter.testelement.TestElement;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
 
 /**
  * A sampler which understands JDBC database requests.
@@ -47,8 +46,6 @@ public class JDBCSampler extends AbstractJDBCTestElement implements Sampler, Tes
     
     private static final long serialVersionUID = 234L;
     
-    private static final Logger log = LoggingManager.getLoggerForClass();
-
     /**
      * Creates a JDBCSampler.
      */
@@ -57,8 +54,6 @@ public class JDBCSampler extends AbstractJDBCTestElement implements Sampler, Tes
 
     @Override
     public SampleResult sample(Entry e) {
-        log.debug("sampling jdbc");
-
         SampleResult res = new SampleResult();
         res.setSampleLabel(getName());
         res.setSamplerData(toString());
@@ -83,11 +78,10 @@ public class JDBCSampler extends AbstractJDBCTestElement implements Sampler, Tes
             try {
                 conn = DataSourceElement.getConnection(getDataSource());
             } finally {
-                // FIXME: there is separate connect time field now
-                res.latencyEnd(); // use latency to measure connection time
+                res.connectEnd();
             }
-            res.setResponseHeaders(conn.toString());
-            res.setResponseData(execute(conn));
+            res.setResponseHeaders(DataSourceElement.getConnectionInfo(getDataSource()));
+            res.setResponseData(execute(conn, res));
         } catch (SQLException ex) {
             final String errCode = Integer.toString(ex.getErrorCode());
             res.setResponseMessage(ex.toString());
@@ -97,7 +91,7 @@ public class JDBCSampler extends AbstractJDBCTestElement implements Sampler, Tes
         } catch (Exception ex) {
             res.setResponseMessage(ex.toString());
             res.setResponseCode("000");
-            res.setResponseData(ex.getMessage().getBytes());
+            res.setResponseData(ObjectUtils.defaultIfNull(ex.getMessage(), "NO MESSAGE").getBytes());
             res.setSuccessful(false);
         } finally {
             close(conn);

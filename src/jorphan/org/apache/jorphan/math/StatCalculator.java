@@ -21,8 +21,8 @@ package org.apache.jorphan.math;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import org.apache.commons.lang3.mutable.MutableLong;
 
@@ -55,6 +55,8 @@ public abstract class StatCalculator<T extends Number & Comparable<? super T>> {
     private T max;
 
     private long bytes = 0;
+    
+    private long sentBytes = 0;
 
     private final T ZERO;
 
@@ -86,13 +88,25 @@ public abstract class StatCalculator<T extends Number & Comparable<? super T>> {
         deviation = 0;
         count = 0;
         bytes = 0;
+        sentBytes = 0;
         max = MIN_VALUE;
         min = MAX_VALUE;
     }
 
-
+    /**
+     * Add to received bytes
+     * @param newValue number of newly received bytes
+     */
     public void addBytes(long newValue) {
         bytes += newValue;
+    }
+
+    /**
+     * Add to sent bytes
+     * @param newValue number of newly sent bytes
+     */
+    public void addSentBytes(long newValue) {
+        sentBytes += newValue;
     }
 
     public void addAll(StatCalculator<T> calc) {
@@ -107,6 +121,10 @@ public abstract class StatCalculator<T extends Number & Comparable<? super T>> {
 
     public long getTotalBytes() {
         return bytes;
+    }
+    
+    public long getTotalSentBytes() {
+        return sentBytes;
     }
 
     /**
@@ -144,7 +162,7 @@ public abstract class StatCalculator<T extends Number & Comparable<? super T>> {
         }
 
         // use Math.round () instead of simple (long) to provide correct value rounding
-        long target = Math.round (count * percent);
+        long target = Math.round(count * percent);
         try {
             for (Entry<T, MutableLong> val : valuesMap.entrySet()) {
                 target -= val.getValue().longValue();

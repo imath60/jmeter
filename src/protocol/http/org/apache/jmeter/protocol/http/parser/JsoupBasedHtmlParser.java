@@ -24,8 +24,6 @@ import java.util.Iterator;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.protocol.http.util.ConversionUtils;
-//import org.apache.jorphan.logging.LoggingManager;
-//import org.apache.log.Logger;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -39,7 +37,6 @@ import org.jsoup.select.NodeVisitor;
  * TODO Factor out common code between {@link LagartoBasedHtmlParser} and this one (adapter pattern)
  */
 public class JsoupBasedHtmlParser extends HTMLParser {
-//    private static final Logger log = LoggingManager.getLoggerForClass();
 
     /*
      * A dummy class to pass the pointer of URL.
@@ -67,8 +64,9 @@ public class JsoupBasedHtmlParser extends HTMLParser {
 
         private void extractAttribute(Element tag, String attributeName) {
             String url = tag.attr(attributeName);
-            if (!StringUtils.isEmpty(url)) {
-                urls.addURL(url, baseUrl.url);
+            String normalizedUrl = normalizeUrlValue(url);
+            if(normalizedUrl != null) {
+                urls.addURL(normalizedUrl, baseUrl.url);
             }
         }
 
@@ -91,7 +89,7 @@ public class JsoupBasedHtmlParser extends HTMLParser {
                         baseUrl.url = ConversionUtils.makeRelativeURL(baseUrl.url, baseref);
                     }
                 } catch (MalformedURLException e1) {
-                    throw new RuntimeException(e1);
+                    throw new IllegalArgumentException("Error creating relative url from " + baseref, e1);
                 }
             } else if (tagName.equals(TAG_IMAGE)) {
                 extractAttribute(tag, ATT_SRC);
@@ -106,8 +104,6 @@ public class JsoupBasedHtmlParser extends HTMLParser {
                     // then we need to download the binary
                     extractAttribute(tag, ATT_SRC);
                 }
-            } else if (tagName.equals(TAG_SCRIPT)) {
-                extractAttribute(tag, ATT_SRC);
                 // Bug 51750
             } else if (tagName.equals(TAG_FRAME) || tagName.equals(TAG_IFRAME)) {
                 extractAttribute(tag, ATT_SRC);
@@ -116,8 +112,10 @@ public class JsoupBasedHtmlParser extends HTMLParser {
             } else if (tagName.equals(TAG_BGSOUND)){
                 extractAttribute(tag, ATT_SRC);
             } else if (tagName.equals(TAG_LINK)) {
+                String relAttr = tag.attr(ATT_REL);
                 // Putting the string first means it works even if the attribute is null
-                if (STYLESHEET.equalsIgnoreCase(tag.attr(ATT_REL))) {
+                if (STYLESHEET.equalsIgnoreCase(relAttr) || ICON.equalsIgnoreCase(relAttr) 
+                        || SHORTCUT_ICON.equalsIgnoreCase(relAttr)) {
                     extractAttribute(tag, ATT_HREF);
                 }
             } else {
@@ -146,7 +144,7 @@ public class JsoupBasedHtmlParser extends HTMLParser {
             String contents = new String(html,encoding);
             Document doc = Jsoup.parse(contents);
             JMeterNodeVisitor nodeVisitor = new JMeterNodeVisitor(new URLPointer(baseUrl), coll);
-            new NodeTraversor(nodeVisitor).traverse(doc);
+            NodeTraversor.traverse(nodeVisitor, doc);
             return coll.iterator();
         } catch (Exception e) {
             throw new HTMLParseException(e);

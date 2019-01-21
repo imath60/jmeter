@@ -28,19 +28,17 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.jmeter.gui.Stoppable;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Web daemon thread. Creates main socket on port 8080 and listens on it
- * forever. For each client request, creates a Proxy thread to handle the
- * request.
- *
+ * Web daemon thread. Creates main socket on port configured port (8888 by default) and listens on it
+ * forever. For each client request, creates a Proxy thread to handle the request.
  */
 public class Daemon extends Thread implements Stoppable {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(Daemon.class);
 
     /**
      * The time (in milliseconds) to wait when accepting a client connection.
@@ -104,7 +102,7 @@ public class Daemon extends Thread implements Stoppable {
         this.target = target;
         this.daemonPort = port;
         this.proxyClass = proxyClass;
-        log.info("Creating Daemon Socket on port: " + daemonPort);
+        log.info("Creating Daemon Socket on port: {}", daemonPort);
         mainSocket = new ServerSocket(daemonPort);
         mainSocket.setSoTimeout(ACCEPT_TIMEOUT);
     }
@@ -130,7 +128,7 @@ public class Daemon extends Thread implements Stoppable {
                     Socket clientSocket = mainSocket.accept();
                     if (running) {
                         // Pass request to new proxy thread
-                        Proxy thd = proxyClass.newInstance();
+                        Proxy thd = proxyClass.getDeclaredConstructor().newInstance();
                         thd.configure(clientSocket, target, pageEncodings, formEncodings);
                         thd.start();
                     }
@@ -145,10 +143,6 @@ public class Daemon extends Thread implements Stoppable {
         } finally {
             JOrphanUtils.closeQuietly(mainSocket);
         }
-
-        // Clear maps
-        pageEncodings = null;
-        formEncodings = null;
     }
 
     /**

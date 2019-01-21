@@ -33,15 +33,19 @@ public final class ActionNames {
     public static final String ADD              = "Add"; // $NON-NLS-1$
     public static final String ADD_ALL          = "add_all"; // $NON-NLS-1$
     public static final String ADD_PARENT       = "Add Parent"; // $NON-NLS-1$
+    public static final String ADD_THINK_TIME_BETWEEN_EACH_STEP    = "Add Think Time between each step"; // $NON-NLS-1$
     public static final String ANALYZE_FILE     = "Analyze File"; // $NON-NLS-1$
+    public static final String APPLY_NAMING_CONVENTION    = "Apply Naming Convention"; // $NON-NLS-1$
     public static final String CHANGE_LANGUAGE  = "change_language"; // $NON-NLS-1$
     public static final String CHANGE_PARENT    = "Change Parent"; // $NON-NLS-1$
     public static final String CHECK_DIRTY      = "check_dirty"; // $NON-NLS-1$
     public static final String CHECK_REMOVE     = "check_remove"; // $NON-NLS-1$
+    public static final String CHECK_CUT        = "check_cut"; // $NON-NLS-1$
     public static final String CLEAR            = "action.clear"; // $NON-NLS-1$
     public static final String CLEAR_ALL        = "action.clear_all"; // $NON-NLS-1$
     public static final String CLOSE            = "close"; // $NON-NLS-1$
     public static final String COLLAPSE_ALL     = "collapse all"; // $NON-NLS-1$
+    public static final String COMPILE_JSR223   = "compile_jsr223"; // $NON-NLS-1$
     public static final String COPY             = "Copy"; // $NON-NLS-1$
     public static final String CUT              = "Cut"; // $NON-NLS-1$
     public static final String DEBUG_ON         = "debug_on"; // $NON-NLS-1$
@@ -57,7 +61,13 @@ public final class ActionNames {
     public static final String HELP             = "help"; // $NON-NLS-1$
     public static final String HEAP_DUMP        = "heap_dump"; // $NON-NLS-1$
     public static final String LAF_PREFIX       = "laf:"; // Look and Feel prefix
+    public static final String LINK_BUG_TRACKER = "link_bug_tracker:"; // URI of bug tracker
+    public static final String LINK_COMP_REF    = "link_component_reference:"; // URI of component reference
+    public static final String LINK_FUNC_REF    = "link_function_reference:"; // URI of functions reference
+    public static final String LINK_NIGHTLY_BUILD = "link_nightly_build:"; // URI of nightly build
+    public static final String LINK_RELEASE_NOTES = "link_release_notes"; // URI of the release note
     public static final String LOGGER_PANEL_ENABLE_DISABLE     = "logger_panel_enable_disable"; // $NON-NLS-1$
+    public static final String LOG_LEVEL_PREFIX = "loglevel:"; // Logger level prefix
     public static final String MERGE            = "merge"; // $NON-NLS-1$
     public static final String OPEN             = "open"; // $NON-NLS-1$
     public static final String OPEN_RECENT      = "open_recent"; // $NON-NLS-1$
@@ -72,7 +82,7 @@ public final class ActionNames {
     public static final String REMOTE_STOP      = "remote_stop"; // $NON-NLS-1$
     public static final String REMOTE_STOP_ALL  = "remote_stop_all"; // $NON-NLS-1$
     public static final String REMOVE           = "remove"; // $NON-NLS-1$
-    public static final String RESET_GUI        = "reset_gui"; // $NON-NLS-1$
+    public static final String RESTART          = "restart"; // $NON-NLS-1$
     public static final String REVERT_PROJECT   = "revert_project"; // $NON-NLS-1$
     public static final String SAVE             = "save"; // $NON-NLS-1$
     public static final String SAVE_ALL_AS      = "save_all_as";  // $NON-NLS-1$
@@ -99,9 +109,15 @@ public final class ActionNames {
     public static final String QUICK_COMPONENT  = "quick_component"; // $NON-NLS-1$
     public static final String COLLAPSE         = "collapse"; // $NON-NLS-1$
     public static final String EXPAND           = "expand"; // $NON-NLS-1$
+    public static final String RUN_TG           = "run_tg"; // $NON-NLS-1$
+    public static final String RUN_TG_NO_TIMERS = "run_tg_no_timers"; // $NON-NLS-1$
+    public static final String SAVE_BEFORE_RUN  = "save_before_run"; //$NON-NLS-1$
+    public static final String THREAD_DUMP      = "thread_dump"; // $NON-NLS-1$
+    public static final String VALIDATE_TG      = "validate_tg"; //$NON-NLS-1$
+    public static final String ZOOM_IN          = "zoom_in"; //$NON-NLS-1$
+    public static final String ZOOM_OUT         = "zoom_out"; //$NON-NLS-1$
+    public static final String PARSE_CURL       = "parse_curl"; ////$NON-NLS-1$
 
     // Prevent instantiation
-    private ActionNames(){
-        
-    }
+    private ActionNames() {}
 }

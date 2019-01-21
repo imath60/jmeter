@@ -35,17 +35,23 @@ import org.apache.jmeter.util.JMeterUtils;
 /**
  * The class ResponseTimePerSampleGraphConsumer provides a graph to visualize
  * percentiles of response time for each sample name.
- *
+ * NOT USED FOR NOW as of 3.0
  * @since 3.0
+ * 
  */
 public class ResponseTimePerSampleGraphConsumer extends AbstractGraphConsumer {
 
-    private static final String RESPONSE_TIME_PER_SAMPLE_SERIES_FORMAT = "Percentile %d";
+    private static final String RESPONSE_TIME_PER_SAMPLE_SERIES_FORMAT = "%dth percentile";
 
     /**
      * Instantiates a new response time per sample graph consumer.
      */
     public ResponseTimePerSampleGraphConsumer() {
+    }
+
+    @Override
+    public void initialize() {
+        super.initialize();
         setRevertKeysAndValues(true);
     }
 
@@ -79,7 +85,8 @@ public class ResponseTimePerSampleGraphConsumer extends AbstractGraphConsumer {
                 RESPONSE_TIME_PER_SAMPLE_SERIES_FORMAT, Integer.valueOf(property)));
 
         return new GroupInfo(factory, seriesSelector,
-                new ElapsedTimeValueSelector(), false, false);
+                // We include Transaction Controller results
+                new ElapsedTimeValueSelector(false), false, false);
     }
 
     /*

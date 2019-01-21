@@ -56,7 +56,7 @@ public class JLabeledTextField extends JPanel implements JLabeledField, FocusLis
      * Default constructor, The label and the Text field are left empty.
      */
     public JLabeledTextField() {
-        this("", 20);
+        this("", 20, null, true);
     }
 
     /**
@@ -66,24 +66,48 @@ public class JLabeledTextField extends JPanel implements JLabeledField, FocusLis
      *            The text to in the label.
      */
     public JLabeledTextField(String pLabel) {
-        this(pLabel, 20);
+        this(pLabel, 20, null, true);
     }
 
+    /**
+     * Constructs a new component with the label displaying the passed text.
+     *
+     * @param pLabel
+     *            The text to in the label.
+     * @param size size of text field
+     */
     public JLabeledTextField(String pLabel, int size) {
+        this(pLabel, size, null, true);
+    }
+
+    /**
+     * Size defaults to 20
+     * @param pLabel
+     *            The text to in the label.
+     * @param bk {@link Color} background color
+     */
+    public JLabeledTextField(String pLabel, Color bk) {
+        this(pLabel, 20, bk, true);
+    }
+       
+    /**
+     * Size defaults to 20
+     * @param pLabel
+     *            The text to in the label.
+     * @param size textfield length
+     * @param bk {@link Color} background color may be null
+     * @param editable boolean
+     */
+    public JLabeledTextField(String pLabel, int size, Color bk, boolean editable) {
         super();
         mTextField = createTextField(size);
+        mTextField.setEditable(editable);
         mLabel = new JLabel(pLabel);
         mLabel.setLabelFor(mTextField);
-        init();
-    }
-
-    public JLabeledTextField(String pLabel, Color bk) {
-        super();
-        mTextField = createTextField(20);
-        mLabel = new JLabel(pLabel);
-        mLabel.setBackground(bk);
-        mLabel.setLabelFor(mTextField);
-        this.setBackground(bk);
+        if(bk!=null) {
+            mLabel.setBackground(bk);
+            this.setBackground(bk);
+        }
         init();
     }
 
@@ -128,7 +152,7 @@ public class JLabeledTextField extends JPanel implements JLabeledField, FocusLis
      * Callback method when the focus to the Text Field component is lost.
      *
      * @param pFocusEvent
-     *            The focus event that occured.
+     *            The focus event that occurred.
      */
     @Override
     public void focusLost(FocusEvent pFocusEvent) {
@@ -244,5 +268,10 @@ public class JLabeledTextField extends JPanel implements JLabeledField, FocusLis
         for (ChangeListener mChangeListener : mChangeListeners) {
             mChangeListener.stateChanged(ce);
         }
+    }
+    
+    @Override
+    public boolean requestFocusInWindow() {
+        return mTextField.requestFocusInWindow();
     }
 }

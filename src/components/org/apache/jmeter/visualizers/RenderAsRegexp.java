@@ -74,9 +74,8 @@ public class RenderAsRegexp implements ResultRenderer, ActionListener {
     /** {@inheritDoc} */
     @Override
     public void clearData() {
+        // N.B. don't set regexpField to empty to keep regexp
         this.regexpDataField.setText(""); // $NON-NLS-1$
-        // don't set empty to keep regexp
-        // regexpField.setText(""); // $NON-NLS-1$
         this.regexpResultField.setText(""); // $NON-NLS-1$
     }
 
@@ -144,10 +143,11 @@ public class RenderAsRegexp implements ResultRenderer, ActionListener {
         return sb.toString();
 
     }
+
     /** {@inheritDoc} */
-   @Override
-public void renderResult(SampleResult sampleResult) {
-       clearData();
+    @Override
+    public void renderResult(SampleResult sampleResult) {
+        clearData();
         String response = ViewResultsFullVisualizer.getResponseAsString(sampleResult);
         regexpDataField.setText(response);
         regexpDataField.setCaretPosition(0);
@@ -173,13 +173,14 @@ public void renderResult(SampleResult sampleResult) {
         regexpDataField.setWrapStyleWord(true);
 
         JScrollPane regexpDataPane = GuiUtils.makeScrollPane(regexpDataField);
-        regexpDataPane.setMinimumSize(new Dimension(0, 200));
+        regexpDataPane.setPreferredSize(new Dimension(0, 200));
 
         JPanel pane = new JPanel(new BorderLayout(0, 5));
 
         JSplitPane mainSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
                 regexpDataPane, createRegexpTasksPanel());
-        mainSplit.setDividerLocation(300);
+        mainSplit.setDividerLocation(0.6d);
+        mainSplit.setOneTouchExpandable(true);
         pane.add(mainSplit, BorderLayout.CENTER);
         return pane;
     }

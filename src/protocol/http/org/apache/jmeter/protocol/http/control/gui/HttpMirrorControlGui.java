@@ -29,6 +29,7 @@ import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JTextField;
 
 import org.apache.jmeter.control.gui.LogicControllerGui;
@@ -39,15 +40,19 @@ import org.apache.jmeter.gui.util.MenuFactory;
 import org.apache.jmeter.protocol.http.control.HttpMirrorControl;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * GUI of Mirror Server Test element
+ *
+ */
 public class HttpMirrorControlGui extends LogicControllerGui
     implements JMeterGUIComponent, ActionListener, UnsharedComponent {
 
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HttpMirrorControlGui.class);
 
     private JTextField portField;
 
@@ -55,7 +60,8 @@ public class HttpMirrorControlGui extends LogicControllerGui
 
     private JTextField maxQueueSizeField;
 
-    private JButton stop, start;
+    private JButton stop;
+    private JButton start;
 
     private static final String ACTION_STOP = "stop"; // $NON-NLS-1$
 
@@ -73,7 +79,7 @@ public class HttpMirrorControlGui extends LogicControllerGui
     @Override
     public TestElement createTestElement() {
         mirrorController = new HttpMirrorControl();
-        log.debug("creating/configuring model = " + mirrorController);
+        log.debug("creating/configuring model = {}", mirrorController);
         modifyTestElement(mirrorController);
         return mirrorController;
     }
@@ -106,7 +112,7 @@ public class HttpMirrorControlGui extends LogicControllerGui
 
     @Override
     public void configure(TestElement element) {
-        log.debug("Configuring gui with " + element);
+        log.debug("Configuring gui with {}", element);
         super.configure(element);
         mirrorController = (HttpMirrorControl) element;
         portField.setText(mirrorController.getPortString());
@@ -208,5 +214,17 @@ public class HttpMirrorControlGui extends LogicControllerGui
         super.clearGui();
         portField.setText(HttpMirrorControl.DEFAULT_PORT_S);
         maxPoolSizeField.setText(Integer.toString(HttpMirrorControl.DEFAULT_MAX_POOL_SIZE));
+    }
+    
+    /**
+     * Redefined to remove change parent and inserrt parent menu
+     * @see org.apache.jmeter.control.gui.AbstractControllerGui#createPopupMenu()
+     */
+    @Override
+    public JPopupMenu createPopupMenu() {
+        JPopupMenu pop = new JPopupMenu();        
+        MenuFactory.addEditMenu(pop, true);
+        MenuFactory.addFileMenu(pop);
+        return pop;
     }
 }

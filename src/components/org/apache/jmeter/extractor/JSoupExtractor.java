@@ -34,28 +34,22 @@ import org.jsoup.select.Elements;
  */
 public class JSoupExtractor implements Extractor {
 
-    /**
-     * 
-     */
     private static final long serialVersionUID = -6308012192067714191L;
 
     private static final String CACHE_KEY_PREFIX = JSoupExtractor.class.getName()+"_PARSED_BODY";
 
-    /**
-     * 
-     */
     public JSoupExtractor() {
         super();
     }
 
     /**
-     * @see org.apache.jmeter.extractor.Extractor#extract(String, String, int, String, List, int, String)
+     * @see Extractor#extract(String, String, int, String, List, int, String)
      */
     @Override
     public int extract(String expression, String attribute, int matchNumber,
             String inputString, List<String> result, int found,
             String cacheKey) {
-        Document document = null;
+        Document document;
         if (cacheKey != null) {
             document = (Document) 
                     JMeterContextService.getContext().getSamplerContext().get(CACHE_KEY_PREFIX+cacheKey);

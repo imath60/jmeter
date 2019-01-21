@@ -50,17 +50,14 @@ public abstract class AbstractOverTimeGraphConsumer extends
      * @param granularity
      *            the granularity to set
      */
-    // TODO must be final because called by ctor; however currently overridden in a subclass
     public void setGranularity(long granularity) {
         this.granularity = granularity;
-        ((TimeStampKeysSelector) getKeysSelector()).setGranularity(granularity);
     }
 
     /**
      * Instantiates a new abstract over time graph consumer.
      */
     protected AbstractOverTimeGraphConsumer() {
-        setGranularity(1L);
     }
 
     /**
@@ -90,10 +87,7 @@ public abstract class AbstractOverTimeGraphConsumer extends
      * createGroupInfos()
      */
     @Override
-    protected Map<String, GroupInfo> createGroupInfos() {
-        // TODO Auto-generated method stub
-        return null;
-    }
+    protected abstract Map<String, GroupInfo> createGroupInfos();
 
     /*
      * (non-Javadoc)
@@ -105,5 +99,11 @@ public abstract class AbstractOverTimeGraphConsumer extends
     protected void initializeExtraResults(MapResultData parentResult) {
         parentResult.setResult(RESULT_CTX_GRANULARITY, new ValueResultData(
                 Long.valueOf(granularity)));
+    }
+    
+    @Override
+    public void initialize() {
+        super.initialize();
+        ((TimeStampKeysSelector) getKeysSelector()).setGranularity(granularity);
     }
 }

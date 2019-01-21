@@ -25,12 +25,37 @@ import java.beans.PropertyEditor;
  * Allow direct specification of property editors.
  */
 public enum TypeEditor {
-    FileEditor     {@Override PropertyEditor getInstance(PropertyDescriptor descriptor) { return new FileEditor(descriptor); }},
-    PasswordEditor {@Override PropertyEditor getInstance(PropertyDescriptor descriptor) { return new PasswordEditor(); }},
-    TableEditor    {@Override PropertyEditor getInstance(PropertyDescriptor descriptor) { return new TableEditor(); }},
-    TextAreaEditor {@Override PropertyEditor getInstance(PropertyDescriptor descriptor) { return new TextAreaEditor(descriptor); }},
-    ComboStringEditor {@Override PropertyEditor getInstance(PropertyDescriptor descriptor) { return new ComboStringEditor(descriptor); }},
-    ;
+    FileEditor { // NOSONAR Keep naming for compatibility
+        @Override
+        PropertyEditor getInstance(PropertyDescriptor descriptor) {
+            return new FileEditor(descriptor);
+        }
+    },
+    PasswordEditor { // NOSONAR Keep naming for compatibility
+        @Override
+        PropertyEditor getInstance(PropertyDescriptor descriptor) {
+            return new PasswordEditor();
+        }
+    },
+    TableEditor { // NOSONAR Keep naming for compatibility
+        @Override
+        PropertyEditor getInstance(PropertyDescriptor descriptor) {
+            return new TableEditor();
+        }
+    }, 
+    TextAreaEditor { // NOSONAR Keep naming for compatibility
+        @Override
+        PropertyEditor getInstance(PropertyDescriptor descriptor) {
+            return new TextAreaEditor(descriptor);
+        }
+    },
+    ComboStringEditor { // NOSONAR Keep naming for compatibility
+        @Override
+        PropertyEditor getInstance(PropertyDescriptor descriptor) {
+            return new ComboStringEditor(descriptor);
+        }
+    };
+
     // Some editors may need the descriptor
     abstract PropertyEditor getInstance(PropertyDescriptor descriptor);
 }

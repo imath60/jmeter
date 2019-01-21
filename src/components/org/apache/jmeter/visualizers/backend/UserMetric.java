@@ -36,11 +36,12 @@ public class UserMetric {
      * 
      */
     public UserMetric() {
+        super();
     }
 
     /**
      * Add a {@link SampleResult} to be used in the statistics
-     * @param result {@link SampleResult} to be used
+     * @param result {@link SampleResult} not used
      */
     public synchronized void add(SampleResult result) {
         usersStats.addValue(JMeterContextService.getThreadCounts().activeThreads);
@@ -58,7 +59,7 @@ public class UserMetric {
      *          using a sliding window of SLIDING_WINDOW_SIZE
      */
     public int getMaxActiveThreads() {
-        return (int) usersStats.getMin();
+        return (int) usersStats.getMax();
     }
 
     /**
@@ -74,7 +75,7 @@ public class UserMetric {
      *          using a sliding window of SLIDING_WINDOW_SIZE
      */
     public int getMinActiveThreads() {
-        return (int) usersStats.getMax();
+        return (int) usersStats.getMin();
     }
 
     /**
@@ -89,5 +90,12 @@ public class UserMetric {
      */
     public int getStartedThreads() {
         return JMeterContextService.getThreadCounts().startedThreads;
+    }
+    
+    /**
+     * Clear stats
+     */
+    public void clear() {
+        this.usersStats.clear();
     }
 }

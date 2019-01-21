@@ -23,13 +23,16 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URL;
+
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jmeter.threads.JMeterVariables;
+import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -65,6 +68,37 @@ public class TestRegexExtractor {
             vars = new JMeterVariables();
             jmctx.setVariables(vars);
             jmctx.setPreviousResult(result);
+        }
+
+        @Test
+        public void testProcessAllElementsSingleMatch() {
+            vars.put("content", "one");
+            extractor.setMatchNumber(-1);
+            extractor.setRefName("varname");
+            extractor.setRegex("(\\w+)");
+            extractor.setScopeVariable("content");
+            extractor.setThreadContext(jmctx);
+            extractor.setTemplate("$1$");
+            extractor.process();
+            assertThat(vars.get("varname"), CoreMatchers.is(CoreMatchers.nullValue()));
+            assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
+            assertThat(vars.get("varname_matchNr"), CoreMatchers.is("1"));
+        }
+
+        @Test
+        public void testProcessAllElementsMultipleMatches() {
+            vars.put("content", "one, two");
+            extractor.setMatchNumber(-1);
+            extractor.setRefName("varname");
+            extractor.setRegex("(\\w+)");
+            extractor.setScopeVariable("content");
+            extractor.setThreadContext(jmctx);
+            extractor.setTemplate("$1$");
+            extractor.process();
+            assertThat(vars.get("varname"), CoreMatchers.is(CoreMatchers.nullValue()));
+            assertThat(vars.get("varname_1"), CoreMatchers.is("one"));
+            assertThat(vars.get("varname_2"), CoreMatchers.is("two"));
+            assertThat(vars.get("varname_matchNr"), CoreMatchers.is("2"));
         }
 
         @Test
@@ -308,7 +342,7 @@ public class TestRegexExtractor {
             assertFalse("useBody should be false", extractor.useBody());
             assertFalse("useURL should be false", extractor.useUrl());
             assertTrue("useMessage should be true", extractor.useMessage());
-            assertFalse("useCode should be falsee", extractor.useCode());
+            assertFalse("useCode should be false", extractor.useCode());
             extractor.setMatchNumber(3);
             extractor.process();
             assertEquals("brown",vars.get("regVal"));
@@ -319,7 +353,6 @@ public class TestRegexExtractor {
             extractor.setRegex("<value field=\"(pinposition\\d+)\">(\\d+)</value>");
             extractor.setTemplate("$2$");
             extractor.setMatchNumber(4);
-            //extractor.setDefaultValue("default");
             vars.put("regVal", "initial");
             assertEquals("initial", vars.get("regVal"));
             extractor.process();

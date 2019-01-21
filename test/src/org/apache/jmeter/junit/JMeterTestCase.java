@@ -26,49 +26,37 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.Locale;
 import java.util.MissingResourceException;
+
 import org.apache.jmeter.engine.util.CompoundVariable;
 import org.apache.jmeter.functions.AbstractFunction;
 import org.apache.jmeter.functions.InvalidVariableException;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*
- * Extend JUnit TestCase to provide common setup
+ * Common setup for JUnit4 test cases
  */
 public abstract class JMeterTestCase {
     // Used by findTestFile
     private static final String filePrefix;
 
-
     /*
      * If not running under AllTests.java, make sure that the properties (and
      * log file) are set up correctly.
-     * 
-     * N.B. In order for this to work correctly, the JUnit test must be started
-     * in the bin directory, and all the JMeter jars (plus any others needed at
-     * run-time) need to be on the classpath.
-     * 
+     *
+     * N.B. This assumes the JUnit test are executed in the
+     * project root, bin directory or one level down, and all the JMeter jars
+     * (plus any others needed at run-time) need to be on the classpath.
      */
     static {
         if (JMeterUtils.getJMeterProperties() == null) {
-            String file = "testfiles/jmetertest.properties";
-            File f = new File(file);
-            if (!f.canRead()) {
-                System.out.println("Can't find " + file + " - trying bin directory");
-                file = "bin/" + file;// JMeterUtils assumes Unix-style separators
-                filePrefix = "bin/";
-            } else {
-                filePrefix = "";
-            }
-            // Used to be done in initializeProperties
-            String home=new File(System.getProperty("user.dir"),filePrefix).getParent();
-            System.out.println("Setting JMeterHome: "+home);
-            JMeterUtils.setJMeterHome(home);
+            filePrefix = JMeterTestUtils.setupJMeterHome();
+            String home = JMeterUtils.getJMeterHome();
             System.setProperty("jmeter.home", home); // needed for scripts
             JMeterUtils jmu = new JMeterUtils();
             try {
-                jmu.initializeProperties(file);
+                jmu.initializeProperties(filePrefix+"jmeter.properties");
             } catch (MissingResourceException e) {
                 System.out.println("** Can't find resources - continuing anyway **");
             }
@@ -88,6 +76,7 @@ public abstract class JMeterTestCase {
             logprop("user.variant");
             System.out.println("Locale="+Locale.getDefault().toString());
             logprop("java.class.version");
+            logprop("java.awt.headless");
             logprop("os.name");
             logprop("os.version");
             logprop("os.arch");
@@ -119,7 +108,7 @@ public abstract class JMeterTestCase {
         return file;
     }
 
-    protected static final Logger testLog = LoggingManager.getLoggerForClass();
+    protected static final Logger testLog = LoggerFactory.getLogger(JMeterTestCase.class);
 
     protected void checkInvalidParameterCounts(AbstractFunction func, int minimum)
             throws Exception {

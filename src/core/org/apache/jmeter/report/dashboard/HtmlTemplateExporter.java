@@ -18,8 +18,10 @@
 package org.apache.jmeter.report.dashboard;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
@@ -28,8 +30,8 @@ import java.util.regex.PatternSyntaxException;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.jmeter.JMeter;
-import org.apache.jmeter.report.config.ConfigurationException;
 import org.apache.jmeter.report.config.ExporterConfiguration;
 import org.apache.jmeter.report.config.GraphConfiguration;
 import org.apache.jmeter.report.config.ReportGeneratorConfiguration;
@@ -44,8 +46,9 @@ import org.apache.jmeter.report.processor.SampleContext;
 import org.apache.jmeter.report.processor.ValueResultData;
 import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jorphan.util.JOrphanUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import freemarker.template.Configuration;
 import freemarker.template.TemplateExceptionHandler;
@@ -57,12 +60,21 @@ import freemarker.template.TemplateExceptionHandler;
  * @since 3.0
  */
 public class HtmlTemplateExporter extends AbstractDataExporter {
+    private static final FileFilter HTML_REPORT_FILE_FILTER = 
+        file -> 
+            (file.isFile() && 
+                    "index.html".equals(file.getName()))
+                    || (file.isDirectory() && 
+                            ("content".equals(file.getName()) ||
+                                    file.getName().startsWith("sbadmin2-")));
+    private static final String CUSTOM_GRAPH_PREFIX = "custom_";
 
     /** Format used for non null check of parameters. */
     private static final String MUST_NOT_BE_NULL = "%s must not be null";
 
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HtmlTemplateExporter.class);
 
+    public static final String DATA_CTX_REPORT_TITLE = "reportTitle";
     public static final String DATA_CTX_TESTFILE = "testFile";
     public static final String DATA_CTX_BEGINDATE = "beginDate";
     public static final String DATA_CTX_ENDDATE = "endDate";
@@ -77,18 +89,22 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
 
     public static final String TIMESTAMP_FORMAT_MS = "ms";
     private static final String INVALID_TEMPLATE_DIRECTORY_FMT = "\"%s\" is not a valid template directory";
-    private static final String INVALID_PROPERTY_CONFIG_FMT = "Wrong property \"%s\" in \"%s\" export configuration";
-    private static final String EMPTY_GRAPH_FMT = "The graph \"%s\" will be empty : %s";
 
     // Template directory
     private static final String TEMPLATE_DIR = "template_dir";
     private static final String TEMPLATE_DIR_NAME_DEFAULT = "report-template";
 
     // Output directory
-    private static final String OUTPUT_DIR = "output_dir";
+    static final String OUTPUT_DIR = "output_dir";
     // Default output folder name
-    private static final String OUTPUT_DIR_NAME_DEFAULT = "report-output";
+    static final String OUTPUT_DIR_NAME_DEFAULT = "report-output";
 
+    /**
+     * Adds to context the value surrounding it with quotes
+     * @param key Key
+     * @param value Value
+     * @param context {@link DataContext}
+     */
     private void addToContext(String key, Object value, DataContext context) {
         if (value instanceof String) {
             value = '"' + (String) value + '"';
@@ -114,7 +130,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         /**
          * Sets the extra options to inject in the result data
          * 
-         * @param extraOptions
+         * @param extraOptions to inject
          */
         public final void setExtraOptions(SubConfiguration extraOptions) {
             this.extraOptions = extraOptions;
@@ -150,7 +166,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
      *
      */
     private interface ResultChecker {
-        void checkResult(ResultData result);
+        boolean checkResult(DataContext dataContext, ResultData result);
     }
 
     /**
@@ -177,9 +193,9 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         /**
          * Instantiates a new EmptyGraphChecker.
          * 
-         * @param filtersOnlySampleSeries
-         * @param showControllerSeriesOnly
-         * @param filterPattern
+         * @param filtersOnlySampleSeries flag to control filter for samples
+         * @param showControllerSeriesOnly flag to control visibility of controller
+         * @param filterPattern to use
          */
         public EmptyGraphChecker(boolean filtersOnlySampleSeries,
                 boolean showControllerSeriesOnly, Pattern filterPattern) {
@@ -193,23 +209,23 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
          * 
          * @see
          * org.apache.jmeter.report.dashboard.HtmlTemplateExporter.ResultChecker
-         * #checkResult(org.apache.jmeter.report.processor.ResultData)
+         * #checkResult( org.apache.jmeter.report.core.DataContext dataContext, org.apache.jmeter.report.processor.ResultData)
          */
         @Override
-        public void checkResult(ResultData result) {
+        public boolean checkResult(DataContext dataContext, ResultData result) {
             Boolean supportsControllerDiscrimination = findValue(Boolean.class,
                     AbstractGraphConsumer.RESULT_SUPPORTS_CONTROLLERS_DISCRIMINATION,
                     result);
 
-            String message = null;
             if (supportsControllerDiscrimination.booleanValue() && showControllerSeriesOnly
                     && excludesControllers) {
                 // Exporter shows controller series only
                 // whereas the current graph support controller
                 // discrimination and excludes
                 // controllers
-                message = ReportGeneratorConfiguration.EXPORTER_KEY_SHOW_CONTROLLERS_ONLY
-                        + " is set while the graph excludes controllers.";
+                log.warn("{} is set while the graph {} excludes controllers.",
+                        ReportGeneratorConfiguration.EXPORTER_KEY_SHOW_CONTROLLERS_ONLY, graphId);
+                return false;
             } else {
                 if (filterPattern != null) {
                     // Detect whether none series matches
@@ -244,28 +260,41 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
                                             || !supportsControllerDiscrimination.booleanValue()
                                             || isController
                                             || !showControllerSeriesOnly;
+                                    if(log.isDebugEnabled()) {
+                                        log.debug(
+                                                "name:{} matches pattern:{}, supportsControllerDiscrimination:{}, "
+                                                + "isController:{}, showControllerSeriesOnly:{}",
+                                                name, filterPattern.pattern(),
+                                                supportsControllerDiscrimination,
+                                                isController,
+                                                showControllerSeriesOnly);
+                                    }
                                 } else {
                                     // If the name does not match the pattern,
                                     // other properties can hold the series
                                     matches = filtersOnlySampleSeries
                                             && !supportsControllerDiscrimination.booleanValue();
+                                    if(log.isDebugEnabled()) {
+                                        log.debug("name:{} does not match pattern:{}, filtersOnlySampleSeries:{},"
+                                            + " supportsControllerDiscrimination:{}", 
+                                            name, filterPattern.pattern(), 
+                                            filtersOnlySampleSeries,
+                                            supportsControllerDiscrimination);
+                                    }
                                 }
                             }
                             index++;
                         }
                         if (!matches) {
                             // None series matches the pattern
-                            message = "None series matches the "
-                                    + ReportGeneratorConfiguration.EXPORTER_KEY_SERIES_FILTER;
+                            log.warn("No serie matches the series_filter: {} in graph: {}",
+                                    ReportGeneratorConfiguration.EXPORTER_KEY_SERIES_FILTER, graphId);
+                            return false;
                         }
                     }
                 }
             }
-
-            // Log empty graph when needed.
-            if (message != null) {
-                LOG.warn(String.format(EMPTY_GRAPH_FMT, graphId, message));
-            }
+            return true;
         }
     }
 
@@ -284,7 +313,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         if (data instanceof ResultData) {
             ResultData result = (ResultData) data;
             if (checker != null) {
-                checker.checkResult(result);
+                checker.checkResult(dataContext, result);
             }
             if (customizer != null) {
                 result = customizer.customizeResult(result);
@@ -302,17 +331,6 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         return timestamp;
     }
 
-    private <TProperty> TProperty getPropertyFromConfig(SubConfiguration cfg,
-            String property, TProperty defaultValue, Class<TProperty> clazz)
-                    throws ExportException {
-        try {
-            return cfg.getProperty(property, defaultValue, clazz);
-        } catch (ConfigurationException ex) {
-            throw new ExportException(String.format(INVALID_PROPERTY_CONFIG_FMT,
-                    property, getName()), ex);
-        }
-    }
-
     /*
      * (non-Javadoc)
      * 
@@ -328,7 +346,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         Validate.notNull(file, MUST_NOT_BE_NULL, "file");
         Validate.notNull(configuration, MUST_NOT_BE_NULL, "configuration");
 
-        LOG.debug("Start template processing");
+        log.debug("Start template processing");
 
         // Create data context and populate it
         DataContext dataContext = new DataContext();
@@ -343,7 +361,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         if (!templateDirectory.isDirectory()) {
             String message = String.format(INVALID_TEMPLATE_DIRECTORY_FMT,
                     templateDirectory.getAbsolutePath());
-            LOG.error(message);
+            log.error(message);
             throw new ExportException(message);
         }
 
@@ -354,8 +372,12 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         if(!StringUtils.isEmpty(globallyDefinedOutputDir)) {
             outputDir = new File(globallyDefinedOutputDir);
         }
+        
+        JOrphanUtils.canSafelyWriteToFolder(outputDir, HTML_REPORT_FILE_FILTER);
 
-        LOG.info("Will generate dashboard in folder:" + outputDir.getAbsolutePath());
+        if (log.isInfoEnabled()) {
+            log.info("Will generate dashboard in folder: {}", outputDir.getAbsolutePath());
+        }
 
         // Add the flag defining whether only sample series are filtered to the
         // context
@@ -371,8 +393,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
             try {
                 filterPattern = Pattern.compile(seriesFilter);
             } catch (PatternSyntaxException ex) {
-                LOG.error(String.format("Invalid series filter: \"%s\", %s",
-                        seriesFilter, ex.getDescription()));
+                log.error("Invalid series filter: '{}', {}", seriesFilter, ex.getDescription());
             }
         }
         addToContext(DATA_CTX_SERIES_FILTER, seriesFilter, dataContext);
@@ -410,29 +431,41 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         addResultToContext(ReportGenerator.STATISTICS_SUMMARY_CONSUMER_NAME,
                 storedData, dataContext, jsonizer);
 
+        // Add Top 5 errors by sampler consumer result to the data context
+        addResultToContext(ReportGenerator.TOP5_ERRORS_BY_SAMPLER_CONSUMER_NAME,
+                storedData, dataContext, jsonizer);
+
         // Collect graph results from sample context and transform them into
         // Json strings to inject in the data context
         ExtraOptionsResultCustomizer customizer = new ExtraOptionsResultCustomizer();
         EmptyGraphChecker checker = new EmptyGraphChecker(
                 filtersOnlySampleSeries, showControllerSeriesOnly,
                 filterPattern);
+        DataContext customGraphs = new DataContext();
+        Map<String, GraphConfiguration> mapConfiguration = new HashMap<>();
         for (Map.Entry<String, GraphConfiguration> graphEntry : configuration
                 .getGraphConfigurations().entrySet()) {
             final String graphId = graphEntry.getKey();
             final GraphConfiguration graphConfiguration = graphEntry.getValue();
-            final SubConfiguration extraOptions = exportCfg
-                    .getGraphExtraConfigurations().get(graphId);
+            final SubConfiguration extraOptions = exportCfg.getGraphExtraConfigurations().get(graphId);
 
             // Initialize customizer and checker
             customizer.setExtraOptions(extraOptions);
             checker.setExcludesControllers(
                     graphConfiguration.excludesControllers());
             checker.setGraphId(graphId);
-
-            // Export graph data
-            addResultToContext(graphId, storedData, dataContext, jsonizer,
+            mapConfiguration.put(graphId, graphConfiguration);
+            if(graphId.startsWith(CUSTOM_GRAPH_PREFIX)) {
+                addResultToContext(graphId, storedData, customGraphs, jsonizer,
+                        customizer, checker);
+            } else {
+                // Export graph data
+                addResultToContext(graphId, storedData, dataContext, jsonizer,
                     customizer, checker);
+            }
         }
+        dataContext.put("graphConfigurations", mapConfiguration);
+        dataContext.put("customsGraphsData", customGraphs);
 
         // Replace the begin date with its formatted string and store the old
         // timestamp
@@ -446,6 +479,11 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
         TimeZone timezone = TimeZone.getDefault();
         addToContext(DATA_CTX_TIMEZONE_OFFSET,
                 Integer.valueOf(timezone.getOffset(oldTimestamp)), dataContext);
+
+        // Add report title to the context
+        if(!StringUtils.isEmpty(configuration.getReportTitle())) {
+            dataContext.put(DATA_CTX_REPORT_TITLE, StringEscapeUtils.escapeHtml4(configuration.getReportTitle()));
+        }
 
         // Add the test file name to the context
         addToContext(DATA_CTX_TESTFILE, file.getName(), dataContext);
@@ -461,9 +499,9 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
             templateCfg.setDirectoryForTemplateLoading(templateDirectory);
             templateCfg.setTemplateExceptionHandler(
                     TemplateExceptionHandler.RETHROW_HANDLER);
-            LOG.info(
-                    "Report will be generated in:" + outputDir.getAbsolutePath()
-                            + ", creating folder structure");
+            if (log.isInfoEnabled()) {
+                log.info("Report will be generated in: {}, creating folder structure", outputDir.getAbsolutePath());
+            }
             FileUtils.forceMkdir(outputDir);
             TemplateVisitor visitor = new TemplateVisitor(
                     templateDirectory.toPath(), outputDir.toPath(), templateCfg,
@@ -473,8 +511,7 @@ public class HtmlTemplateExporter extends AbstractDataExporter {
             throw new ExportException("Unable to process template files.", ex);
         }
 
-        LOG.debug("End of template processing");
+        log.debug("End of template processing");
 
     }
-
 }

@@ -18,16 +18,18 @@
 
 package org.apache.jmeter.protocol.http.util;
 
-
 /**
  * Constants used in HTTP, mainly header names.
  */
-
 public interface HTTPConstantsInterface { // CHECKSTYLE IGNORE InterfaceIsType
+    String SC_MOVED_PERMANENTLY = "301";
+    String SC_MOVED_TEMPORARILY = "302";
+    String SC_SEE_OTHER = "303";
+    String SC_TEMPORARY_REDIRECT = "307";
 
     int DEFAULT_HTTPS_PORT = 443;
     String DEFAULT_HTTPS_PORT_STRING = "443"; // $NON-NLS-1$
-    int    DEFAULT_HTTP_PORT = 80;
+    int DEFAULT_HTTP_PORT = 80;
     String DEFAULT_HTTP_PORT_STRING = "80"; // $NON-NLS-1$
     String PROTOCOL_HTTP = "http"; // $NON-NLS-1$
     String PROTOCOL_HTTPS = "https"; // $NON-NLS-1$
@@ -52,6 +54,7 @@ public interface HTTPConstantsInterface { // CHECKSTYLE IGNORE InterfaceIsType
     String SEARCH = "SEARCH"; // $NON-NLS-1$
     String HEADER_AUTHORIZATION = "Authorization"; // $NON-NLS-1$
     String HEADER_COOKIE = "Cookie"; // $NON-NLS-1$
+    String HEADER_COOKIE_IN_REQUEST = "Cookie:"; // $NON-NLS-1$
     String HEADER_CONNECTION = "Connection"; // $NON-NLS-1$
     String CONNECTION_CLOSE = "close"; // $NON-NLS-1$
     String KEEP_ALIVE = "keep-alive"; // $NON-NLS-1$
@@ -60,7 +63,11 @@ public interface HTTPConstantsInterface { // CHECKSTYLE IGNORE InterfaceIsType
     String HEADER_CONTENT_ENCODING = "content-encoding"; // $NON-NLS-1$
     String HTTP_1_1 = "HTTP/1.1"; // $NON-NLS-1$
     String HEADER_SET_COOKIE = "set-cookie"; // $NON-NLS-1$
+    // Brotli compression not supported yet by HC4 4.5.2 , but to be added
+    String ENCODING_BROTLI = "br"; // $NON-NLS-1$
+    String ENCODING_DEFLATE = "deflate"; // $NON-NLS-1$
     String ENCODING_GZIP = "gzip"; // $NON-NLS-1$
+
     String HEADER_CONTENT_DISPOSITION = "Content-Disposition"; // $NON-NLS-1$
     String HEADER_CONTENT_TYPE = "Content-Type"; // $NON-NLS-1$
     String HEADER_CONTENT_LENGTH = "Content-Length"; // $NON-NLS-1$

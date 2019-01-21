@@ -39,7 +39,7 @@ import javax.net.ssl.SSLSocket;
  */
 public class SlowSSLSocket extends SSLSocket {
 
-    private final int CPS; // Characters per second to emulate
+    private final int charactersPerSecond; // Characters per second to emulate
 
     private final SSLSocket sslSock; // Save the actual socket
 
@@ -53,19 +53,19 @@ public class SlowSSLSocket extends SSLSocket {
             throw new IllegalArgumentException("Speed (cps) <= 0");
         }
         sslSock=sock;
-        CPS=cps;
+        charactersPerSecond=cps;
     }
 
     // Override so we can intercept the stream
     @Override
     public OutputStream getOutputStream() throws IOException {
-        return new SlowOutputStream(sslSock.getOutputStream(), CPS);
+        return new SlowOutputStream(sslSock.getOutputStream(), charactersPerSecond);
     }
 
     // Override so we can intercept the stream
     @Override
     public InputStream getInputStream() throws IOException {
-        return new SlowInputStream(sslSock.getInputStream(), CPS);
+        return new SlowInputStream(sslSock.getInputStream(), charactersPerSecond);
     }
 
     // Forward all the SSLSocket methods to the input socket

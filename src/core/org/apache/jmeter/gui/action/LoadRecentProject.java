@@ -29,7 +29,6 @@ import java.util.prefs.Preferences;
 
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
-import javax.swing.JSeparator;
 
 /**
  * Handles the loading of recent files, and also the content and
@@ -59,7 +58,7 @@ public class LoadRecentProject extends Load {
     }
 
     @Override
-    public void doAction(ActionEvent e) {
+    public void doActionAfterCheck(ActionEvent e) {
         // We must ask the user if it is ok to close current project
         if (!Close.performAction(e)) {
             return;
@@ -80,7 +79,7 @@ public class LoadRecentProject extends Load {
     /**
      * Get the menu items to add to the menu bar, to get recent file functionality
      *
-     * @return a List of JMenuItem and a JSeparator, representing recent files
+     * @return a List of JMenuItem, representing recent files. JMenuItem may not be visible
      */
     public static List<JComponent> getRecentFileMenuItems() {
         LinkedList<JComponent> menuItems = new LinkedList<>();
@@ -100,11 +99,6 @@ public class LoadRecentProject extends Load {
             // Add the menu item
             menuItems.add(recentFile);
         }
-        // Add separator as the last item
-        JSeparator separator = new JSeparator();
-        separator.setVisible(false);
-        menuItems.add(separator);
-
         // Update menu items to reflect recent files
         updateMenuItems(menuItems);
 
@@ -114,7 +108,7 @@ public class LoadRecentProject extends Load {
     /**
      * Update the content and visibility of the menu items for recent files
      *
-     * @param menuItems the JMenuItem and JSeparator to update
+     * @param menuItems the JMenuItem to update
      * @param loadedFileName the file name of the project file that has just
      * been loaded
      */
@@ -155,38 +149,27 @@ public class LoadRecentProject extends Load {
      * based on the recent file stored user preferences.
      */
     private static void updateMenuItems(List<JComponent> menuItems) {
-        // Assume no recent files
-        boolean someRecentFiles = false;
         // Update the menu items
-        for(int i = 0; i < NUMBER_OF_MENU_ITEMS; i++) {
+        for (int i = 0; i < NUMBER_OF_MENU_ITEMS; i++) {
             // Get the menu item
-            JMenuItem recentFile = (JMenuItem)menuItems.get(i);
+            JMenuItem recentFile = (JMenuItem) menuItems.get(i);
 
             // Find and set the file for this recent file command
             String recentFilePath = getRecentFile(i);
-            if(recentFilePath != null) {
+            if (recentFilePath != null) {
                 File file = new File(recentFilePath);
-                StringBuilder sb = new StringBuilder(60);
-                if (i<9) {
-                    sb.append(i+1).append(" "); //$NON-NLS-1$
-                }
-                sb.append(getMenuItemDisplayName(file));
-                recentFile.setText(sb.toString());
+                String sb = String.valueOf(i + 1) + " " + //$NON-NLS-1$
+                        getMenuItemDisplayName(file);
+                // Index before file name
+                recentFile.setText(sb);
                 recentFile.setToolTipText(recentFilePath);
                 recentFile.setEnabled(true);
                 recentFile.setVisible(true);
-                // At least one recent file menu item is visible
-                someRecentFiles = true;
-            }
-            else {
+            } else {
                 recentFile.setEnabled(false);
                 recentFile.setVisible(false);
             }
         }
-        // If there are some recent files, we must make the separator visisble
-        // The separator is the last item in the list
-        JSeparator separator = (JSeparator)menuItems.get(menuItems.size() - 1);
-        separator.setVisible(someRecentFiles);
     }
 
     /**
@@ -197,7 +180,7 @@ public class LoadRecentProject extends Load {
         // Limit the length of the menu text if needed
         final int maxLength = 40;
         String menuText = file.getName();
-        if(menuText.length() > maxLength) {
+        if (menuText.length() > maxLength) {
             menuText = "..." + menuText.substring(menuText.length() - maxLength, menuText.length()); //$NON-NLS-1$
         }
         return menuText;
@@ -256,5 +239,14 @@ public class LoadRecentProject extends Load {
      */
     private static void setRecentFile(int index, String fileName) {
         prefs.put(USER_PREFS_KEY + index, fileName);
+    }
+
+    /**
+     * @param fileLoadRecentFiles List of JMenuItem
+     * @return true if at least on JMenuItem is visible
+     */
+    public static boolean hasVisibleMenuItem(List<JComponent> fileLoadRecentFiles) {
+        return fileLoadRecentFiles.stream()
+                .anyMatch(JComponent::isVisible);
     }
 }

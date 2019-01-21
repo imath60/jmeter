@@ -25,6 +25,7 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -47,6 +48,11 @@ public class ConversionUtils {
     private static final String DOTDOT = ".."; // $NON-NLS-1$
     private static final String SLASH = "/"; // $NON-NLS-1$
     private static final String COLONSLASHSLASH = "://"; // $NON-NLS-1$
+    
+    /**
+     * Match /../[../] etc.
+     */
+    private static final Pattern MAKE_RELATIVE_PATTERN = Pattern.compile("^/((?:\\.\\./)+)"); // $NON-NLS-1$
 
     /**
      * Extract the encoding (charset) from the Content-Type, e.g.
@@ -109,9 +115,7 @@ public class ConversionUtils {
             return initial;
         }
         String path = initial.getPath();
-        // Match /../[../] etc.
-        Pattern p = Pattern.compile("^/((?:\\.\\./)+)"); // $NON-NLS-1$
-        Matcher m = p.matcher(path);
+        Matcher m = MAKE_RELATIVE_PATTERN.matcher(path);
         if (m.lookingAt()){
             String prefix = m.group(1); // get ../ or ../../ etc.
             if (location.startsWith(prefix)){
@@ -127,9 +131,11 @@ public class ConversionUtils {
      * @throws Exception when given <code>url</code> leads to a malformed URL or URI
      */
     public static String escapeIllegalURLCharacters(String url) throws Exception{
-        String decodeUrl = URLDecoder.decode(url,"UTF-8");
+        String decodeUrl = URLDecoder.decode(url,StandardCharsets.UTF_8.name());
         URL urlString = new URL(decodeUrl);
-        URI uri = new URI(urlString.getProtocol(), urlString.getUserInfo(), urlString.getHost(), urlString.getPort(), urlString.getPath(), urlString.getQuery(), urlString.getRef());
+        URI uri = new URI(urlString.getProtocol(), urlString.getUserInfo(),
+                urlString.getHost(), urlString.getPort(), urlString.getPath(),
+                urlString.getQuery(), urlString.getRef());
         return uri.toString();
     }
     
@@ -168,11 +174,15 @@ public class ConversionUtils {
      */
     public static String removeSlashDotDot(String url)
     {
-        if (url == null || (url = url.trim()).length() < 4 || !url.contains(SLASHDOTDOT))
-        {
+        if (url == null) {
             return url;
         }
-
+        
+        url = url.trim();
+        if(url.length() < 4 || !url.contains(SLASHDOTDOT)) {
+            return url;
+        }
+        
         /**
          * http://auth@host:port/path1/path2/path3/?query#anchor
          */
@@ -221,45 +231,37 @@ public class ConversionUtils {
 
         StringTokenizer st = new StringTokenizer(currentPath, SLASH);
         List<String> tokens = new ArrayList<>();
-        while (st.hasMoreTokens())
-        {
+        while (st.hasMoreTokens()) {
             tokens.add(st.nextToken());
         }
 
-        for (int i = 0; i < tokens.size(); i++)
-        {
-            if (i < tokens.size() - 1)
-            {
+        for (int i = 0; i < tokens.size(); i++) {
+            if (i < tokens.size() - 1) {
                 final String thisToken = tokens.get(i);
 
                 // Verify for a ".." component at next iteration
-                if (thisToken.length() > 0 && !thisToken.equals(DOTDOT) && tokens.get(i + 1).equals(DOTDOT))
-                {
+                if (thisToken.length() > 0 && !thisToken.equals(DOTDOT) && tokens.get(i + 1).equals(DOTDOT)) {
                     tokens.remove(i);
                     tokens.remove(i);
-                    i = i - 2;
-                    if (i < -1)
-                    {
-                        i = -1;
+                    i = i - 2; // CHECKSTYLE IGNORE ModifiedControlVariable
+                    if (i < -1) {
+                        i = -1; // CHECKSTYLE IGNORE ModifiedControlVariable
                     }
                 }
             }
-
         }
 
         StringBuilder newPath = new StringBuilder();
         if (startsWithSlash) {
             newPath.append(SLASH);
         }
-        for (int i = 0; i < tokens.size(); i++)
-        {
+        for (int i = 0; i < tokens.size(); i++) {
             newPath.append(tokens.get(i));
 
             // append '/' if this isn't the last token or it is but the original
             // path terminated w/ a '/'
             boolean appendSlash = i < (tokens.size() - 1) ? true : endsWithSlash;
-            if (appendSlash)
-            {
+            if (appendSlash) {
                 newPath.append(SLASH);
             }
         }

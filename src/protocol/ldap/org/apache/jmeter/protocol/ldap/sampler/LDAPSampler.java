@@ -21,6 +21,7 @@ package org.apache.jmeter.protocol.ldap.sampler;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
@@ -41,8 +42,8 @@ import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.testelement.property.PropertyIterator;
 import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.testelement.property.TestElementProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Ldap Sampler class is main class for the LDAP test. This will control all the
@@ -50,7 +51,7 @@ import org.apache.log.Logger;
  *
  */
 public class LDAPSampler extends AbstractSampler {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(LDAPSampler.class);
 
     private static final long serialVersionUID = 240L;
 
@@ -87,7 +88,7 @@ public class LDAPSampler extends AbstractSampler {
 
     // For In build test case using this counter
     // create the new entry in the server
-    private static volatile int counter = 0;
+    private static AtomicInteger COUNTER = new AtomicInteger(0);
 
     private boolean searchFoundEntries;// TODO turn into parameter?
 
@@ -330,13 +331,13 @@ public class LDAPSampler extends AbstractSampler {
         String s3 = "Test"; //$NON-NLS-1$
         String s5 = "user"; //$NON-NLS-1$
         String s6 = "test"; //$NON-NLS-1$
-        counter += 1;
+        COUNTER.incrementAndGet();
         basicattributes.put(new BasicAttribute("givenname", s1)); //$NON-NLS-1$
         basicattributes.put(new BasicAttribute("sn", s3)); //$NON-NLS-1$
-        basicattributes.put(new BasicAttribute("cn", "TestUser" + counter)); //$NON-NLS-1$ //$NON-NLS-2$
+        basicattributes.put(new BasicAttribute("cn", "TestUser" + COUNTER.get())); //$NON-NLS-1$ //$NON-NLS-2$
         basicattributes.put(new BasicAttribute("uid", s5)); //$NON-NLS-1$
         basicattributes.put(new BasicAttribute("userpassword", s6)); //$NON-NLS-1$
-        setProperty(new StringProperty(ADD, "cn=TestUser" + counter)); //$NON-NLS-1$
+        setProperty(new StringProperty(ADD, "cn=TestUser" + COUNTER.get())); //$NON-NLS-1$
         return basicattributes;
     }
 
@@ -356,7 +357,7 @@ public class LDAPSampler extends AbstractSampler {
      * @return a formatted string label describing this sampler
      */
     public String getLabel() {
-        return ("ldap://" + this.getServername() + ":" + getPort() + "/" + this.getRootdn());
+        return "ldap://" + this.getServername() + ":" + getPort() + "/" + this.getRootdn();
     }
 
     /**
@@ -466,9 +467,6 @@ public class LDAPSampler extends AbstractSampler {
             isSuccessful = true;
         } catch (Exception ex) {
             log.error("Ldap client - ", ex);
-            // Could time this
-            // res.sampleEnd();
-            // if sampleEnd() is not called, elapsed time will remain zero
             res.setResponseCode("500");// TODO distinguish errors better //$NON-NLS-1$
             res.setResponseMessage(ex.toString());
             isSuccessful = false;

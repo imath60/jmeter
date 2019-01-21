@@ -18,60 +18,55 @@
 
 package org.apache.jmeter.gui.action;
 
-import java.awt.Dialog;
-import java.awt.Frame;
-import java.awt.Window;
 import java.awt.event.ActionEvent;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.prefs.Preferences;
+import java.util.stream.Collectors;
 
-import javax.swing.SwingUtilities;
+import javax.swing.JOptionPane;
 import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
 
+import org.apache.jmeter.gui.GuiPackage;
 import org.apache.jmeter.gui.util.JMeterMenuBar;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implements the Look and Feel menu item.
  */
-public class LookAndFeelCommand implements Command {
+public class LookAndFeelCommand extends AbstractAction {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(LookAndFeelCommand.class);
 
     private static final String JMETER_LAF = "jmeter.laf"; // $NON-NLS-1$
 
-    private static final Set<String> commands = new HashSet<>();
+    private static final Set<String> commands;
 
     private static final Preferences PREFS = Preferences.userNodeForPackage(LookAndFeelCommand.class);
     // Note: Windows user preferences are stored relative to: HKEY_CURRENT_USER\Software\JavaSoft\Prefs
 
     /** Prefix for the user preference key */
-    private static final String USER_PREFS_KEY = "laf"; //$NON-NLS-1$
+    private static final String USER_PREFS_KEY = "laf.class"; //$NON-NLS-1$
 
     static {
-        UIManager.LookAndFeelInfo[] lfs = JMeterMenuBar.getAllLAFs();
-        for (UIManager.LookAndFeelInfo lf : lfs) {
-            commands.add(ActionNames.LAF_PREFIX + lf.getClassName());
-        }
-        String jMeterLaf = getJMeterLaf();
+        log.info("Installing Darcula LAF");
+        UIManager.installLookAndFeel(JMeterMenuBar.DARCULA_LAF, JMeterMenuBar.DARCULA_LAF_CLASS);
+        UIManager.LookAndFeelInfo[] allLAFs = JMeterMenuBar.getAllLAFs();
+        commands = Arrays.stream(allLAFs)
+                .map(lf -> ActionNames.LAF_PREFIX + lf.getClassName())
+                .collect(Collectors.toSet());
         if (log.isInfoEnabled()) {
-            List<String> names = new ArrayList<>();
-            for(UIManager.LookAndFeelInfo laf : lfs) {
-                if (laf.getClassName().equals(jMeterLaf)) {
-                    names.add(laf.getName());
-                }
-            }
-            if (names.size() > 0) {
-                log.info("Using look and feel: "+jMeterLaf+ " " +names.toString());
-            } else {
-                log.info("Using look and feel: "+jMeterLaf);
-            }
+            final String jMeterLaf = getJMeterLaf();
+            List<String> names = Arrays.stream(allLAFs)
+                    .filter(laf -> laf.getClassName().equals(JMeterMenuBar.DARCULA_LAF_CLASS))
+                    .map(UIManager.LookAndFeelInfo::getName)
+                    .collect(Collectors.toList());
+            log.info("Using look and feel: {} {}", jMeterLaf, names);
         }
     }
 
@@ -104,7 +99,7 @@ public class LookAndFeelCommand implements Command {
         if (laf != null) {
             return checkLafName(laf);
         }
-        laf = JMeterUtils.getProperty(JMETER_LAF);
+        laf = JMeterUtils.getPropDefault(JMETER_LAF, JMeterMenuBar.DARCULA_LAF_CLASS);
         if (laf != null) {
             return checkLafName(laf);
         }
@@ -123,6 +118,7 @@ public class LookAndFeelCommand implements Command {
     }
 
     public LookAndFeelCommand() {
+        // NOOP
     }
 
     @Override
@@ -130,17 +126,19 @@ public class LookAndFeelCommand implements Command {
         try {
             String className = ev.getActionCommand().substring(ActionNames.LAF_PREFIX.length()).replace('/', '.');
             UIManager.setLookAndFeel(className);
-            for (Window w : Window.getWindows()) {
-                SwingUtilities.updateComponentTreeUI(w);
-                if (w.isDisplayable() &&
-                    (w instanceof Frame ? !((Frame)w).isResizable() :
-                    w instanceof Dialog ? !((Dialog)w).isResizable() :
-                    true)) {
-                    w.pack();
-                }
-            }
+            JMeterUtils.refreshUI();
             PREFS.put(USER_PREFS_KEY, className);
-        } catch (javax.swing.UnsupportedLookAndFeelException | InstantiationException | ClassNotFoundException | IllegalAccessException e) {
+            int chosenOption = JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(), JMeterUtils
+                    .getResString("laf_quit_after_change"), // $NON-NLS-1$
+                    JMeterUtils.getResString("exit"), // $NON-NLS-1$
+                    JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (chosenOption == JOptionPane.YES_OPTION) {
+                ActionRouter.getInstance().doActionNow(new ActionEvent(ev.getSource(), ev.getID(), ActionNames.RESTART));
+            }
+        } catch (UnsupportedLookAndFeelException
+                | InstantiationException
+                | ClassNotFoundException
+                | IllegalAccessException e) {
             JMeterUtils.reportErrorToUser("Look and Feel unavailable:" + e.toString());
         }
     }

@@ -28,8 +28,8 @@ import org.apache.jmeter.config.Argument;
 import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.testelement.property.BooleanProperty;
 import org.apache.jmeter.testelement.property.JMeterProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 //For unit tests, @see TestHTTPArgument
 
@@ -38,13 +38,17 @@ import org.apache.log.Logger;
  * Represents an Argument for HTTP requests.
  */
 public class HTTPArgument extends Argument implements Serializable {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final String DEFAULT_CONTENT_TYPE = "text/plain";
 
-    private static final long serialVersionUID = 240L;
+    private static final Logger log = LoggerFactory.getLogger(HTTPArgument.class);
+
+    private static final long serialVersionUID = 241L;
 
     private static final String ALWAYS_ENCODE = "HTTPArgument.always_encode";
 
     private static final String USE_EQUALS = "HTTPArgument.use_equals";
+    
+    private static final String CONTENT_TYPE = "HTTPArgument.content_type";
 
     private static final EncoderCache cache = new EncoderCache(1000);
 
@@ -54,7 +58,7 @@ public class HTTPArgument extends Argument implements Serializable {
      * The value is assumed to be not encoded.
      *
      * @param name
-     *            name of the paramter
+     *            name of the parameter
      * @param value
      *            value of the parameter
      * @param metadata
@@ -84,6 +88,14 @@ public class HTTPArgument extends Argument implements Serializable {
 
     }
 
+    public void setContentType(String ct) {
+        setProperty(CONTENT_TYPE, ct, HTTPArgument.DEFAULT_CONTENT_TYPE);
+    }
+
+    public String getContentType() {
+        return getPropertyAsString(CONTENT_TYPE, HTTPArgument.DEFAULT_CONTENT_TYPE);
+    }
+    
     public void setAlwaysEncoded(boolean ae) {
         setProperty(new BooleanProperty(ALWAYS_ENCODE, ae));
     }

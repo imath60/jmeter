@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.samplers.AbstractSampler;
 import org.apache.jmeter.samplers.Entry;
@@ -31,9 +32,11 @@ import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.property.IntegerProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.threads.JMeterContext;
+import org.apache.jmeter.threads.JMeterContext.TestLogicalAction;
 import org.apache.jmeter.threads.JMeterContextService;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.timers.TimerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dummy Sampler used to pause or stop a thread or the test;
@@ -42,9 +45,13 @@ import org.apache.log.Logger;
  */
 public class TestAction extends AbstractSampler implements Interruptible {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(TestAction.class);
+    
+    private static final String MSG_STOP_CURRENT_THREAD = "Stopping current thread from element {}";
 
-    private static final long serialVersionUID = 240L;
+    private static final TimerService TIMER_SERVICE = TimerService.getInstance(); 
+
+    private static final long serialVersionUID = 242L;
 
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList("org.apache.jmeter.config.gui.SimpleConfigGui"));
@@ -53,11 +60,21 @@ public class TestAction extends AbstractSampler implements Interruptible {
     public static final int STOP = 0;
     public static final int PAUSE = 1;
     public static final int STOP_NOW = 2;
+    /**
+     * Start next iteration of Thread Loop
+     */
     public static final int RESTART_NEXT_LOOP = 3;
+    /**
+     * Start next iteration of Current Looop
+     */
+    public static final int START_NEXT_ITERATION_CURRENT_LOOP = 4;
+    /**
+     * Break Current Looop
+     */
+    public static final int BREAK_CURRENT_LOOP = 5;
 
     // Action targets
     public static final int THREAD = 0;
-    // public static final int THREAD_GROUP = 1;
     public static final int TEST = 2;
 
     // Identifiers
@@ -65,7 +82,7 @@ public class TestAction extends AbstractSampler implements Interruptible {
     private static final String ACTION = "ActionProcessor.action"; //$NON-NLS-1$
     private static final String DURATION = "ActionProcessor.duration"; //$NON-NLS-1$
 
-    private volatile transient Thread pauseThread;
+    private transient volatile Thread pauseThread;
 
     public TestAction() {
         super();
@@ -82,26 +99,42 @@ public class TestAction extends AbstractSampler implements Interruptible {
         int action = getAction();
         if (action == PAUSE) {
             pause(getDurationAsString());
-        } else if (action == STOP || action == STOP_NOW || action == RESTART_NEXT_LOOP) {
+        } else if (action == STOP || action == STOP_NOW) {
             if (target == THREAD) {
-                if(action == STOP || action == STOP_NOW) {
-                    log.info("Stopping current thread");
-                    context.getThread().stop();
-                } else {
-                    log.info("Restarting next loop");
-                    context.setRestartNextLoop(true);
+                if(log.isInfoEnabled()) {
+                    log.info(MSG_STOP_CURRENT_THREAD, getName());
                 }
-//             //Not yet implemented
-//            } else if (target==THREAD_GROUP) {
+                context.getThread().stop();
             } else if (target == TEST) {
                 if (action == STOP_NOW) {
-                    log.info("Stopping all threads now");
+                    if(log.isInfoEnabled()) {
+                        log.info(MSG_STOP_CURRENT_THREAD, getName());
+                    }
+                    context.getThread().stop();
+                    if(log.isInfoEnabled()) {
+                        log.info("Stopping all threads now from element {}", getName());
+                    } 
                     context.getEngine().stopTest();
                 } else {
-                    log.info("Stopping all threads");
+                    if(log.isInfoEnabled()) {
+                        log.info(MSG_STOP_CURRENT_THREAD, getName());
+                    }
+                    context.getThread().stop();
+                    if(log.isInfoEnabled()) {
+                        log.info("Stopping all threads from element {}", getName());
+                    }
                     context.getEngine().askThreadsToStop();
                 }
             }
+        } else if (action == RESTART_NEXT_LOOP) {
+            log.info("Restarting next thread loop from element {}", getName());
+            context.setTestLogicalAction(TestLogicalAction.START_NEXT_ITERATION_OF_THREAD);
+        } else if (action == START_NEXT_ITERATION_CURRENT_LOOP) {
+            log.info("Switching to next loop iteration from element {}", getName());
+            context.setTestLogicalAction(TestLogicalAction.START_NEXT_ITERATION_OF_CURRENT_LOOP);
+        } else if (action == BREAK_CURRENT_LOOP) {
+            log.info("Breaking current loop from element {}", getName());
+            context.setTestLogicalAction(TestLogicalAction.BREAK_CURRENT_LOOP);
         }
 
         return null; // This means no sample is saved
@@ -110,20 +143,25 @@ public class TestAction extends AbstractSampler implements Interruptible {
     private void pause(String timeInMillis) {
         long millis;
         try {
-            millis=Long.parseLong(timeInMillis);
+            if(!StringUtils.isEmpty(timeInMillis)) {
+                millis=Long.parseLong(timeInMillis);
+            } else {
+                log.warn("Duration value is empty, defaulting to 0");
+                millis=0L;
+            }
         } catch (NumberFormatException e){
-            log.warn("Could not create number from "+timeInMillis);
-            millis=0;
+            log.warn("Could not parse number: '{}'", timeInMillis);
+            millis=0L;
         }
         try {
             pauseThread = Thread.currentThread();
             if(millis>0) {
-                TimeUnit.MILLISECONDS.sleep(millis);
+                TimeUnit.MILLISECONDS.sleep(TIMER_SERVICE.adjustDelay(millis));
             } else if(millis<0) {
                 throw new IllegalArgumentException("Configured sleep is negative:"+millis);
             } // else == 0 we do nothing
         } catch (InterruptedException e) {
-            // NOOP
+            Thread.currentThread().interrupt();
         } finally {
             pauseThread = null;
         }

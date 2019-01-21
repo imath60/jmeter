@@ -32,8 +32,8 @@ import org.apache.jmeter.samplers.Sampler;
 import org.apache.jmeter.testelement.AbstractTestElement;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.threads.TestCompilerHelper;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * <p>
@@ -41,7 +41,7 @@ import org.apache.log.Logger;
  * It also implements SimpleController.
  * </p>
  * <p>
- * The main entry point is next(), which is called by by JMeterThread as follows:
+ * The main entry point is next(), which is called by JMeterThread as follows:
  * </p>
  * <p>
  * <code>while (running &amp;&amp; (sampler = controller.next()) != null)</code>
@@ -49,9 +49,11 @@ import org.apache.log.Logger;
  */
 public class GenericController extends AbstractTestElement implements Controller, Serializable, TestCompilerHelper {
 
-    private static final long serialVersionUID = 234L;
+    private static final long serialVersionUID = 235L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(GenericController.class);
+
+    static final String INDEX_VAR_NAME_SUFFIX = "__idx";
 
     private transient LinkedList<LoopIterationListener> iterationListeners = new LinkedList<>();
 
@@ -69,7 +71,7 @@ public class GenericController extends AbstractTestElement implements Controller
     protected transient int current;
 
     /**
-     * TODO document this
+     * Current iteration
      */
     private transient int iterCount;
     
@@ -156,9 +158,7 @@ public class GenericController extends AbstractTestElement implements Controller
     @Override
     public Sampler next() {
         fireIterEvents();
-        if (log.isDebugEnabled()) {
-            log.debug("Calling next on: " + this.getClass().getName());
-        }
+        log.debug("Calling next on: {}", GenericController.class);
         if (isDone()) {
             return null;
         }
@@ -167,7 +167,6 @@ public class GenericController extends AbstractTestElement implements Controller
             TestElement currentElement = getCurrentElement();
             setCurrentElement(currentElement);
             if (currentElement == null) {
-                // incrementCurrent();
                 returnValue = nextIsNull();
             } else {
                 if (currentElement instanceof Sampler) {
@@ -218,7 +217,8 @@ public class GenericController extends AbstractTestElement implements Controller
      * @return the next sampler
      * @throws NextIsNullException when the end of the list has already been reached
      */
-    protected Sampler nextIsAController(Controller controller) throws NextIsNullException {
+    protected Sampler nextIsAController(Controller controller) 
+            throws NextIsNullException { // NOSONAR false positive , throws is required by subclasses 
         Sampler sampler = controller.next();
         if (sampler == null) {
             currentReturnedNull(controller);
@@ -229,7 +229,7 @@ public class GenericController extends AbstractTestElement implements Controller
 
     /**
      * Increment the current pointer and return the element. Called by
-     * {@link #next()} if the element is a sampler. (May be overriden by
+     * {@link #next()} if the element is a sampler. (May be overridden by
      * sub-classes).
      *
      * @param element
@@ -237,7 +237,8 @@ public class GenericController extends AbstractTestElement implements Controller
      * @return input element
      * @throws NextIsNullException when the end of the list has already been reached
      */
-    protected Sampler nextIsASampler(Sampler element) throws NextIsNullException {
+    protected Sampler nextIsASampler(Sampler element) 
+            throws NextIsNullException { // NOSONAR false positive , throws is required by subclasses
         incrementCurrent();
         return element;
     }
@@ -249,7 +250,8 @@ public class GenericController extends AbstractTestElement implements Controller
      * @return null (always, for this class)
      * @throws NextIsNullException when the end of the list has already been reached
      */
-    protected Sampler nextIsNull() throws NextIsNullException {
+    protected Sampler nextIsNull() 
+            throws NextIsNullException { // NOSONAR false positive , throws is required by subclasses
         reInitialize();
         return null;
     }
@@ -260,15 +262,6 @@ public class GenericController extends AbstractTestElement implements Controller
     @Override
     public void triggerEndOfLoop() {
         reInitialize();
-    }
-
-    /**
-     * Called to re-initialize a index of controller's elements (Bug 50032)
-     * @deprecated replaced by GeneriController#initializeSubControllers
-     */
-    @Deprecated
-    protected void reInitializeSubController() {
-        initializeSubControllers();
     }
     
     /**
@@ -307,6 +300,7 @@ public class GenericController extends AbstractTestElement implements Controller
      *             when the list has been completed already
      */
     protected void setCurrentElement(TestElement currentElement) throws NextIsNullException {
+        // NOOP
     }
 
     /**
@@ -325,7 +319,7 @@ public class GenericController extends AbstractTestElement implements Controller
         if (current < subControllersAndSamplers.size()) {
             return subControllersAndSamplers.get(current);
         }
-        if (subControllersAndSamplers.size() == 0) {
+        if (subControllersAndSamplers.isEmpty()) {
             setDone(true);
             throw new NextIsNullException();
         }

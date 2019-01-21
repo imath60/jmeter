@@ -23,31 +23,59 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.io.FileNotFoundException;
+import java.io.File;
+import java.nio.file.NoSuchFileException;
 
 import org.apache.jmeter.junit.JMeterTestCase;
+import org.apache.jmeter.services.FileServer;
+import org.apache.jmeter.util.JMeterUtils;
+import org.apache.jorphan.test.JMeterSerialTest;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 /**
  * File data container for CSV (and similar delimited) files Data is accessible
  * via row and column number
  * 
- * @version $Revision$
  */
-public class TestFileRowColContainer extends JMeterTestCase {
+public class TestFileRowColContainer extends JMeterTestCase implements JMeterSerialTest {
 
-    @Test
+    private String defaultBase = null;
+
+    @Before
+    public void setUp() {
+        defaultBase = FileServer.getDefaultBase();
+        FileServer.getFileServer().setBase(new File(JMeterUtils.getJMeterHome() + "/bin"));
+    }
+
+    @After
+    public void tearDown() {
+        FileServer.getFileServer().setBase(new File(defaultBase));
+    }
+
+    @Test(expected = NoSuchFileException.class)
     public void testNull() throws Exception {
-        try {
-            new FileRowColContainer(findTestPath("testfiles/xyzxyz"));
-            fail("Should not find the file");
-        } catch (FileNotFoundException e) {
-        }
+        new FileRowColContainer(findTestPath("testfiles/xyzxyz"));
     }
 
     @Test
     public void testrowNum() throws Exception {
-        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/test.csv"));
+        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/unit/TestFileRowColContainer.csv"));
+        assertNotNull(f);
+        assertEquals("Expected 4 lines", 4, f.getSize());
+
+        assertEquals(0, f.nextRow());
+        assertEquals(1, f.nextRow());
+        assertEquals(2, f.nextRow());
+        assertEquals(3, f.nextRow());
+        assertEquals(0, f.nextRow());
+
+    }
+
+    @Test
+    public void testRowNumRelative() throws Exception {
+        FileRowColContainer f = new FileRowColContainer("testfiles/unit/TestFileRowColContainer.csv");
         assertNotNull(f);
         assertEquals("Expected 4 lines", 4, f.getSize());
 
@@ -61,7 +89,7 @@ public class TestFileRowColContainer extends JMeterTestCase {
 
     @Test
     public void testColumns() throws Exception {
-        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/test.csv"));
+        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/unit/TestFileRowColContainer.csv"));
         assertNotNull(f);
         assertTrue("Not empty", f.getSize() > 0);
 
@@ -83,7 +111,7 @@ public class TestFileRowColContainer extends JMeterTestCase {
 
     @Test
     public void testColumnsComma() throws Exception {
-        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/test.csv"), ",");
+        FileRowColContainer f = new FileRowColContainer(findTestPath("testfiles/unit/TestFileRowColContainer.csv"), ",");
         assertNotNull(f);
         assertTrue("Not empty", f.getSize() > 0);
 

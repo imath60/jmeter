@@ -27,16 +27,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link HTMLParser} subclasses can parse HTML content to obtain URLs.
- *
  */
 public abstract class HTMLParser extends BaseParser {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HTMLParser.class);
 
     protected static final String ATT_BACKGROUND    = "background";// $NON-NLS-1$
     protected static final String ATT_CODE          = "code";// $NON-NLS-1$
@@ -62,6 +61,9 @@ public abstract class HTMLParser extends BaseParser {
     protected static final String TAG_SCRIPT        = "script";// $NON-NLS-1$
     protected static final String STYLESHEET        = "stylesheet";// $NON-NLS-1$
 
+    protected static final String SHORTCUT_ICON     = "shortcut icon";
+    protected static final String ICON              = "icon";
+
     protected static final String IE_UA             = "MSIE ([0-9]+.[0-9]+)";// $NON-NLS-1$
     protected static final Pattern IE_UA_PATTERN    = Pattern.compile(IE_UA);
     private   static final float IE_10                = 10.0f;
@@ -70,6 +72,8 @@ public abstract class HTMLParser extends BaseParser {
 
     public static final String DEFAULT_PARSER =
         "org.apache.jmeter.protocol.http.parser.LagartoBasedHtmlParser"; // $NON-NLS-1$
+
+    private static final Pattern NORMALIZE_URL_PATTERN = Pattern.compile("[\n\r\b\f]+"); //$NON-NLS-1$
 
     /**
      * Protected constructor to prevent instantiation except from within
@@ -216,5 +220,20 @@ public abstract class HTMLParser extends BaseParser {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Normalizes URL as browsers do
+     * @param url {@link CharSequence}
+     * @return normalized url
+     */
+    protected static String normalizeUrlValue(CharSequence url) {
+        if (!StringUtils.isEmpty(url)) {
+            String trimmed = NORMALIZE_URL_PATTERN.matcher(url.toString().trim()).replaceAll("");
+            if (!trimmed.isEmpty()) {
+                return trimmed;
+            }
+        }
+        return null;
     }
 }

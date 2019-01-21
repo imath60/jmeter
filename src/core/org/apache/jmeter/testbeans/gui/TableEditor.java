@@ -28,10 +28,11 @@ import java.awt.event.FocusListener;
 import java.beans.PropertyDescriptor;
 import java.beans.PropertyEditorSupport;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
+import java.util.stream.Collectors;
 
 import javax.swing.CellEditor;
 import javax.swing.JButton;
@@ -42,16 +43,16 @@ import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
-import javax.swing.table.TableCellEditor;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.gui.ClearGui;
 import org.apache.jmeter.testelement.property.TestElementProperty;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jorphan.gui.GuiUtils;
 import org.apache.jorphan.gui.ObjectTableModel;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.Functor;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Table editor for TestBean GUI properties.
@@ -61,7 +62,7 @@ import org.apache.log.Logger;
  * </ul>
  */
 public class TableEditor extends PropertyEditorSupport implements FocusListener,TestBeanPropertyEditor,TableModelListener, ClearGui {
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(TableEditor.class);
 
     /** 
      * attribute name for class name of a table row;
@@ -202,7 +203,7 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
         this.descriptor = descriptor;
         String value = (String)descriptor.getValue(CLASSNAME);
         if (value == null) {
-            throw new RuntimeException("The Table Editor requires the CLASSNAME atttribute be set - the name of the object to represent a row");
+            throw new RuntimeException("The Table Editor requires the CLASSNAME attribute be set - the name of the object to represent a row");
         }
         try {
             clazz = Class.forName(value);
@@ -216,28 +217,22 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
     {
         Object hdrs = descriptor.getValue(HEADERS);
         if (!(hdrs instanceof String[])) {
-            throw new RuntimeException("attribute HEADERS must be a String array");            
+            throw new RuntimeException("attribute HEADERS must be a String array");
         }
-        if(clazz == String.class) {
-            model = new ObjectTableModel((String[])hdrs,new Functor[0],new Functor[0],new Class[]{String.class});
+        if (clazz == String.class) {
+            model = new ObjectTableModel((String[]) hdrs, new Functor[0], new Functor[0], new Class[]{String.class});
         } else {
             Object value = descriptor.getValue(OBJECT_PROPERTIES);
             if (!(value instanceof String[])) {
                 throw new RuntimeException("attribute OBJECT_PROPERTIES must be a String array");
             }
-            String[] props = (String[])value;
-            Functor[] writers = new Functor[props.length];
-            Functor[] readers = new Functor[props.length];
-            Class<?>[] editors = new Class[props.length];
-            int count = 0;
-            for(String propName : props) {
-                propName = propName.substring(0,1).toUpperCase(Locale.ENGLISH) + propName.substring(1);
-                writers[count] = createWriter(clazz,propName);
-                readers[count] = createReader(clazz,propName);
-                editors[count] = getArgForWriter(clazz,propName);
-                count++;
-            }
-            model = new ObjectTableModel((String[])hdrs,readers,writers,editors);
+            List<String> props = Arrays.stream((String[]) value)
+                    .map(StringUtils::capitalize)
+                    .collect(Collectors.toList());
+            Functor[] writers = createWriters(props);
+            Functor[] readers = createReaders(clazz, props);
+            Class<?>[] editors = getArgsForWriter(clazz, props);
+            model = new ObjectTableModel((String[]) hdrs, readers, writers, editors);
         }
         model.addTableModelListener(this);
         table = new JTable(model);
@@ -246,29 +241,31 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
         table.addFocusListener(this);
     }
 
-    Functor createWriter(Class<?> c,String propName) {
-        String setter = "set" + propName; // $NON-NLS-1$
-        return new Functor(setter);
+    private Functor[] createWriters(List<String> propNames) {
+        return propNames.stream()
+                .map(propName -> "set" + propName) // $NON-NLS-1$
+                .map(Functor::new)
+                .toArray(Functor[]::new);
     }
 
-    Functor createReader(Class<?> c,String propName) {
-        String getter = "get" + propName; // $NON-NLS-1$
-        try {
-            c.getMethod(getter,new Class[0]);
-            return new Functor(getter);
-        } catch(Exception e) {
-            return new Functor("is" + propName);
-        }
+    private Functor[] createReaders(Class<?> c, List<String> propNames) {
+        List<String> methodNames = Arrays.stream(c.getMethods())
+                .map(Method::getName)
+                .collect(Collectors.toList());
+        return propNames.stream()
+                .map(name -> methodNames.contains("get" + name) ? "get" + name : "is" + name)
+                .map(Functor::new)
+                .toArray(Functor[]::new);
     }
 
-    Class<?> getArgForWriter(Class<?> c,String propName) {
-        String setter = "set" + propName; // $NON-NLS-1$
-        for(Method m : c.getMethods()) {
-            if(m.getName().equals(setter)) {
-                return m.getParameterTypes()[0];
-            }
-        }
-        return null;
+    private Class<?>[] getArgsForWriter(Class<?> c, List<String> propNames) {
+        return propNames.stream()
+                .map(propName -> Arrays.stream(c.getMethods())
+                        .filter(m -> m.getName().equals("set" + propName)) // $NON-NLS-1$
+                        .map(m -> m.getParameterTypes()[0])
+                        .findFirst()
+                        .orElse(null))
+                .toArray(Class<?>[]::new);
     }
 
     @Override
@@ -278,7 +275,6 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
 
     @Override
     public void focusGained(FocusEvent e) {
-
     }
 
     @Override
@@ -302,12 +298,12 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
         @Override
         public void actionPerformed(ActionEvent e) {
             try {
-                model.addRow(clazz.newInstance());
+                model.addRow(clazz.getDeclaredConstructor().newInstance());
                 
                 removeButton.setEnabled(true);
                 clearButton.setEnabled(true);
             } catch(Exception err) {
-                LOG.error("The class type given to TableEditor was not instantiable. ", err);
+                log.error("The class type given to TableEditor was not instantiable.", err);
             }
         }
     }
@@ -325,7 +321,7 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
                 for (String clipboardLine : clipboardLines) {
                     String[] columns = clipboardLine.split("\t"); // $NON-NLS-1$
 
-                    model.addRow(clazz.newInstance());
+                    model.addRow(clazz.getDeclaredConstructor().newInstance());
                     
                     for (int i=0; i < columns.length; i++) {
                         model.setValueAt(columns[i], model.getRowCount() - 1, i);
@@ -340,7 +336,7 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
                     downButton.setEnabled(false);
                 }
             } catch (Exception err) {
-                LOG.error("The class type given to TableEditor was not instantiable. ", err);
+                log.error("The class type given to TableEditor was not instantiable.", err);
             }
         }
     }
@@ -376,7 +372,7 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
     private class UpListener implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
-            cancelEditing();
+            GuiUtils.cancelEditing(table);
 
             int[] rowsSelected = table.getSelectedRows();
             if (rowsSelected.length > 0 && rowsSelected[0] > 0) {
@@ -394,7 +390,7 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
     private class DownListener implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
-            cancelEditing();
+            GuiUtils.cancelEditing(table);
             
             int[] rowsSelected = table.getSelectedRows();
             if (rowsSelected.length > 0 && rowsSelected[rowsSelected.length - 1] < table.getRowCount() - 1) {
@@ -415,16 +411,4 @@ public class TableEditor extends PropertyEditorSupport implements FocusListener,
         this.model.clearData();
     }
     
-    /**
-     * Cancel cell editing if it is being edited
-     */
-    private void cancelEditing() {
-        // If a table cell is being edited, we must cancel the editing before
-        // deleting the row
-        if (table.isEditing()) {
-            TableCellEditor cellEditor = table.getCellEditor(table.getEditingRow(), table.getEditingColumn());
-            cellEditor.cancelCellEditing();
-        }
-    }
-
 }

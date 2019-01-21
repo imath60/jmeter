@@ -22,12 +22,16 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.charset.Charset;
 import java.text.DecimalFormat;
 import java.text.Format;
+import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -36,12 +40,14 @@ import javax.swing.JFileChooser;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.Timer;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.TableCellRenderer;
 
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.gui.util.FileDialoger;
-import org.apache.jmeter.gui.util.HeaderAsPropertyRenderer;
+import org.apache.jmeter.gui.util.HeaderAsPropertyRendererWrapper;
 import org.apache.jmeter.samplers.Clearable;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.save.CSVSaveService;
@@ -49,20 +55,22 @@ import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.Calculator;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jmeter.visualizers.gui.AbstractVisualizer;
+import org.apache.jorphan.gui.MinMaxLongRenderer;
 import org.apache.jorphan.gui.NumberRenderer;
 import org.apache.jorphan.gui.ObjectTableModel;
+import org.apache.jorphan.gui.ObjectTableSorter;
 import org.apache.jorphan.gui.RateRenderer;
 import org.apache.jorphan.gui.RendererUtils;
 import org.apache.jorphan.reflect.Functor;
-import org.apache.jorphan.util.JOrphanUtils;
 
 /**
  * Simpler (lower memory) version of Aggregate Report (StatVisualizer).
  * Excludes the Median and 90% columns, which are expensive in memory terms
  */
+@GUIMenuSortOrder(2)
 public class SummaryReport extends AbstractVisualizer implements Clearable, ActionListener {
 
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
     private static final String USE_GROUP_NAME = "useGroupName"; //$NON-NLS-1$
 
@@ -78,11 +86,14 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
             "aggregate_report_error%",     //$NON-NLS-1$
             "aggregate_report_rate",       //$NON-NLS-1$
             "aggregate_report_bandwidth",  //$NON-NLS-1$
+            "aggregate_report_sent_bytes_per_sec",  //$NON-NLS-1$
             "average_bytes",               //$NON-NLS-1$
             };
 
     private final String TOTAL_ROW_LABEL
         = JMeterUtils.getResString("aggregate_report_total_label");  //$NON-NLS-1$
+
+    private static final int REFRESH_PERIOD = JMeterUtils.getPropDefault("jmeter.gui.refresh_period", 500); // $NON-NLS-1$
 
     private JTable myJTable;
 
@@ -104,7 +115,11 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
      */
     private final transient Object lock = new Object();
 
+    private volatile boolean dataChanged;
+
     private final Map<String, Calculator> tableRows = new ConcurrentHashMap<>();
+
+    private final Deque<Calculator> newRows = new ConcurrentLinkedDeque<>();
 
     // Column renderers
     private static final TableCellRenderer[] RENDERERS =
@@ -112,27 +127,29 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
             null, // Label
             null, // count
             null, // Mean
-            null, // Min
-            null, // Max
+            new MinMaxLongRenderer("#0"), // Min //$NON-NLS-1$
+            new MinMaxLongRenderer("#0"), // Max //$NON-NLS-1$
             new NumberRenderer("#0.00"), // Std Dev. //$NON-NLS-1$
             new NumberRenderer("#0.00%"), // Error %age //$NON-NLS-1$
             new RateRenderer("#.0"),      // Throughput //$NON-NLS-1$
             new NumberRenderer("#0.00"),  // kB/sec //$NON-NLS-1$
+            new NumberRenderer("#0.00"),  // sent kB/sec //$NON-NLS-1$
             new NumberRenderer("#.0"),    // avg. pageSize //$NON-NLS-1$
         };
     
     // Column formats
-    static final Format[] FORMATS =
+    private static final Format[] FORMATS =
         new Format[]{
             null, // Label
             null, // count
             null, // Mean
-            null, // Min
-            null, // Max
+            new DecimalFormat("#0"), // Min //$NON-NLS-1$
+            new DecimalFormat("#0"), // Max //$NON-NLS-1$
             new DecimalFormat("#0.00"), // Std Dev. //$NON-NLS-1$
-            new DecimalFormat("#0.00%"), // Error %age //$NON-NLS-1$
-            new DecimalFormat("#.0"),      // Throughput //$NON-NLS-1$
+            new DecimalFormat("#0.000%"), // Error %age //$NON-NLS-1$
+            new DecimalFormat("#.00000"),      // Throughput //$NON-NLS-1$
             new DecimalFormat("#0.00"),  // kB/sec //$NON-NLS-1$
+            new DecimalFormat("#0.00"),  // sent kB/sec //$NON-NLS-1$
             new DecimalFormat("#.0"),    // avg. pageSize //$NON-NLS-1$
         };
 
@@ -150,17 +167,30 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
                     new Functor("getErrorPercentage"),    //$NON-NLS-1$
                     new Functor("getRate"),               //$NON-NLS-1$
                     new Functor("getKBPerSecond"),        //$NON-NLS-1$
+                    new Functor("getSentKBPerSecond"),        //$NON-NLS-1$
                     new Functor("getAvgPageBytes"),       //$NON-NLS-1$
                 },
-                new Functor[] { null, null, null, null, null, null, null, null , null, null },
-                new Class[] { String.class, Long.class, Long.class, Long.class, Long.class,
-                              String.class, String.class, String.class, String.class, String.class });
+                new Functor[] { null, null, null, null, null, null, null, null , null, null, null },
+                new Class[] { String.class, Integer.class, Long.class, Long.class, Long.class, 
+                        Double.class, Double.class, Double.class, Double.class, Double.class, Double.class });
         clearData();
         init();
+        new Timer(REFRESH_PERIOD, e -> {
+            if (!dataChanged) {
+                return;
+            }
+            dataChanged = false;
+            synchronized (lock) {
+                while (!newRows.isEmpty()) {
+                    model.insertRow(newRows.pop(), model.getRowCount() - 1);
+                }
+                model.fireTableDataChanged();
+            }
+        }).start();
     }
 
     /**
-     * @return <code>true</code> iff all functors can be found
+     * @return <code>true</code> if all functors can be found
      * @deprecated - only for use in testing
      * */
     @Deprecated
@@ -176,32 +206,22 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
 
     @Override
     public void add(final SampleResult res) {
-        final String sampleLabel = res.getSampleLabel(useGroupName.isSelected());
-        JMeterUtils.runSafe(false, new Runnable() {
-            @Override
-            public void run() {
-                Calculator row = null;
-                synchronized (lock) {
-                    row = tableRows.get(sampleLabel);
-                    if (row == null) {
-                        row = new Calculator(sampleLabel);
-                        tableRows.put(row.getLabel(), row);
-                        model.insertRow(row, model.getRowCount() - 1);
-                    }
-                }
-                /*
-                 * Synch is needed because multiple threads can update the counts.
-                 */
-                synchronized(row) {
-                    row.addSample(res);
-                }
-                Calculator tot = tableRows.get(TOTAL_ROW_LABEL);
-                synchronized(tot) {
-                    tot.addSample(res);
-                }
-                model.fireTableDataChanged();                
-            }
+        Calculator row = tableRows.computeIfAbsent(res.getSampleLabel(useGroupName.isSelected()), label -> {
+            Calculator newRow = new Calculator(label);
+            newRows.add(newRow);
+            return newRow;
         });
+        /*
+         * Synch is needed because multiple threads can update the counts.
+         */
+        synchronized (row) {
+            row.addSample(res);
+        }
+        Calculator tot = tableRows.get(TOTAL_ROW_LABEL);
+        synchronized (lock) {
+            tot.addSample(res);
+        }
+        dataChanged = true;
     }
 
     /**
@@ -212,10 +232,12 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
         //Synch is needed because a clear can occur while add occurs
         synchronized (lock) {
             model.clearData();
+            newRows.clear();
             tableRows.clear();
             tableRows.put(TOTAL_ROW_LABEL, new Calculator(TOTAL_ROW_LABEL));
             model.addRow(tableRows.get(TOTAL_ROW_LABEL));
         }
+        dataChanged = true;
     }
 
     /**
@@ -234,8 +256,9 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
         mainPanel.add(makeTitlePanel());
 
         myJTable = new JTable(model);
+        myJTable.setRowSorter(new ObjectTableSorter(model).fixLastRow());
         JMeterUtils.applyHiDPI(myJTable);
-        myJTable.getTableHeader().setDefaultRenderer(new HeaderAsPropertyRenderer());
+        HeaderAsPropertyRendererWrapper.setupDefaultRenderer(myJTable);
         myJTable.setPreferredScrollableViewportSize(new Dimension(500, 70));
         RendererUtils.applyRenderers(myJTable, RENDERERS);
         myScrollPane = new JScrollPane(myJTable);
@@ -270,16 +293,13 @@ public class SummaryReport extends AbstractVisualizer implements Clearable, Acti
             if (chooser == null) {
                 return;
             }
-            FileWriter writer = null;
-            try {
-                writer = new FileWriter(chooser.getSelectedFile());
+            try (FileOutputStream fo = new FileOutputStream(chooser.getSelectedFile());
+                    OutputStreamWriter writer = new OutputStreamWriter(fo, Charset.forName("UTF-8"))) {
                 CSVSaveService.saveCSVStats(StatGraphVisualizer.getAllTableData(model, FORMATS),writer, 
                         saveHeaders.isSelected() ? StatGraphVisualizer.getLabels(COLUMNS) : null);
             } catch (IOException e) {
                 JMeterUtils.reportErrorToUser(e.getMessage(), "Error saving data");
-            } finally {
-                JOrphanUtils.closeQuietly(writer);
-            }
+            } 
         }
     }
 }

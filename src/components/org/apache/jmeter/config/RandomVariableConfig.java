@@ -29,15 +29,15 @@ import org.apache.jmeter.engine.util.NoThreadClone;
 import org.apache.jmeter.testbeans.TestBean;
 import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jmeter.threads.JMeterVariables;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RandomVariableConfig extends ConfigTestElement
     implements TestBean, LoopIterationListener, NoThreadClone, NoConfigMerge
 {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RandomVariableConfig.class);
 
-    private static final long serialVersionUID = 233L;
+    private static final long serialVersionUID = 234L;
 
     /*
      *  N.B. this class is shared between threads (NoThreadClone) so all access to variables
@@ -56,6 +56,10 @@ public class RandomVariableConfig extends ConfigTestElement
 
     private boolean perThread;
 
+    private int range;
+    
+    private long minimum;
+
     // This class is not cloned per thread, so this is shared
     private Random globalRandom = null;
 
@@ -68,12 +72,9 @@ public class RandomVariableConfig extends ConfigTestElement
                 @Override
                 protected Random initialValue() {
                     init();
-                    return new Random(getRandomSeedAsLong());
+                    return createRandom();
                 }};
     }
-
-    private int n;
-    private long minimum;
 
     private Object readResolve(){
         perThreadRandom = initThreadLocal();
@@ -90,37 +91,37 @@ public class RandomVariableConfig extends ConfigTestElement
         final String maxAsString = getMaximumValue();
         long maximum = NumberUtils.toLong(maxAsString);
         long rangeL=maximum-minimum+1; // This can overflow
-        if (minimum >= maximum){
-            log.error("maximum("+maxAsString+") must be > minimum"+minAsString+")");
-            n=0;// This is used as an error indicator
+        if (minimum > maximum){
+            log.error("maximum({}) must be >= minimum({})", maxAsString, minAsString);
+            range=0;// This is used as an error indicator
             return;
         }
         if (rangeL > Integer.MAX_VALUE || rangeL <= 0){// check for overflow too
-            log.warn("maximum("+maxAsString+") - minimum"+minAsString+") must be <="+Integer.MAX_VALUE);
+            log.warn("maximum({}) - minimum({}) must be <= {}", maxAsString, minAsString, Integer.MAX_VALUE);
             rangeL=Integer.MAX_VALUE;
         }
-        n = (int)rangeL;
+        range = (int)rangeL;
     }
 
     /** {@inheritDoc} */
     @Override
     public void iterationStart(LoopIterationEvent iterEvent) {
-        Random randGen=null;
+        Random randGen;
         if (getPerThread()){
             randGen = perThreadRandom.get();
         } else {
             synchronized(this){
                 if (globalRandom == null){
                     init();
-                    globalRandom = new Random(getRandomSeedAsLong());
+                    globalRandom = createRandom();
                 }
                 randGen=globalRandom;
             }
         }
-        if (n <=0){
+        if (range <=0){
             return;
         }
-       long nextRand = minimum + randGen.nextInt(n);
+       long nextRand = minimum + randGen.nextInt(range);
        // Cannot use getThreadContext() as we are not cloned per thread
        JMeterVariables variables = JMeterContextService.getContext().getVariables();
        variables.put(getVariableName(), formatNumber(nextRand));
@@ -134,7 +135,7 @@ public class RandomVariableConfig extends ConfigTestElement
                 DecimalFormat myFormatter = new DecimalFormat(format);
                 return myFormatter.format(value);
             } catch (IllegalArgumentException ignored) {
-                log.warn("Exception formatting value:"+value + " at format:"+format+", using default");
+                log.warn("Exception formatting value: {} at format: {}, using default", value, format);
             }
         }
         return Long.toString(value);
@@ -188,20 +189,27 @@ public class RandomVariableConfig extends ConfigTestElement
     public synchronized String getRandomSeed() {
         return randomSeed;
     }
+    
+    private Random createRandom() {
+        if (randomSeed.length()>0){
+            Long seed = getRandomSeedAsLong();
+            if(seed != null) {
+                return new Random(seed.longValue());
+            }
+        } 
+        return new Random();
+    }
 
     /**
      * @return the randomSeed as a long
      */
-    private synchronized long getRandomSeedAsLong() {
-        long seed = 0;
-        if (randomSeed.length()==0){
-            seed = System.currentTimeMillis();
-        }  else {
-            try {
-                seed = Long.parseLong(randomSeed);
-            } catch (NumberFormatException e) {
-                seed = System.currentTimeMillis();
-                log.warn("Cannot parse seed "+e.getLocalizedMessage());
+    private synchronized Long getRandomSeedAsLong() {
+        Long seed = null;
+        try {
+            seed = Long.parseLong(randomSeed);
+        } catch (NumberFormatException e) {
+            if(log.isWarnEnabled()) {
+                log.warn("Cannot parse random seed: '{}' in element {}", randomSeed, getName());
             }
         }
         return seed;

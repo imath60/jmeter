@@ -40,7 +40,7 @@ public class MapResultData implements ResultData {
      * .report.processor.ResultDataVisitor)
      */
     @Override
-    public <TVisit> TVisit accept(ResultDataVisitor<TVisit> visitor) {
+    public <T> T accept(ResultDataVisitor<T> visitor) {
         return visitor.visitMapResult(this);
     }
 
@@ -86,5 +86,17 @@ public class MapResultData implements ResultData {
      */
     public ResultData removeResult(String name) {
         return map.remove(name);
+    }
+
+    /* (non-Javadoc)
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("MapResultData [map=");
+        builder.append(map);
+        builder.append("]");
+        return builder.toString();
     }
 }

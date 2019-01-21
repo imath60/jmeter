@@ -142,8 +142,6 @@ public class TestURLRewritingModifier extends JMeterTestCase {
             context.setPreviousResult(response);
             mod.process();
             Arguments args = sampler.getArguments();
-            // System.out.println(((Argument) args.getArguments().get(0).getObjectValue()).getValue());
-            // System.out.println(sampler.toString());
             assertEquals("bonjour+monsieur", ((Argument) args.getArguments().get(0).getObjectValue())
                     .getValue());
             assertEquals("http://server.com/index.html?" + "session_id=bonjour%2Bmonsieur", sampler.toString());
@@ -175,6 +173,38 @@ public class TestURLRewritingModifier extends JMeterTestCase {
             context.setPreviousResult(response);
             mod.process();
             assertEquals("index.html;jsessionid=123456789",sampler.getPath());
+        }
+        
+        @Test
+        public void testBug61314() throws Exception { // Bug 50286
+            String html = "<url>/some/path;jsessionid=123456789</url>";
+            
+            response = new SampleResult();
+            response.setResponseData(html, null);
+            mod.setArgumentName("jsessionid");
+            mod.setPathExtension(true);
+            HTTPSamplerBase sampler = createSampler();
+            sampler.setPath("/urlRewrite/index;jsessionid=657CF77A86183868CF30AC36321394B7");
+            context.setCurrentSampler(sampler);
+            context.setPreviousResult(response);
+            mod.process();
+            assertEquals("/urlRewrite/index;jsessionid=123456789",sampler.getPath());
+        }
+        
+        @Test
+        public void testBug61314WithQuestionMark() throws Exception { // Bug 50286
+            String html = "<url>/some/path;jsessionid=123456789</url>";
+            
+            response = new SampleResult();
+            response.setResponseData(html, null);
+            mod.setArgumentName("jsessionid");
+            mod.setPathExtension(true);
+            HTTPSamplerBase sampler = createSampler();
+            sampler.setPath("/urlRewrite/index;jsessionid=657CF77A86183868CF30AC36321394B7?toto=titi");
+            context.setCurrentSampler(sampler);
+            context.setPreviousResult(response);
+            mod.process();
+            assertEquals("/urlRewrite/index;jsessionid=123456789",sampler.getPath());
         }
 
         @Test

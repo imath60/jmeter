@@ -29,8 +29,8 @@ import org.apache.jmeter.testelement.property.FloatProperty;
 import org.apache.jmeter.testelement.property.IntegerProperty;
 import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class represents a controller that can control the number of times that
@@ -41,33 +41,31 @@ import org.apache.log.Logger;
  * The current implementation executes the first N samples (BYNUMBER)
  * or the last N% of samples (BYPERCENT).
  */
-public class ThroughputController extends GenericController implements Serializable, LoopIterationListener,
-        TestStateListener {
+public class ThroughputController
+        extends GenericController
+        implements Serializable, LoopIterationListener, TestStateListener {
 
-    private static final long serialVersionUID = 233L;
+    private static final long serialVersionUID = 234L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(ThroughputController.class);
+
     public static final int BYNUMBER = 0;
-
     public static final int BYPERCENT = 1;
 
     private static final String STYLE = "ThroughputController.style";// $NON-NLS-1$
-
     private static final String PERTHREAD = "ThroughputController.perThread";// $NON-NLS-1$
-
     private static final String MAXTHROUGHPUT = "ThroughputController.maxThroughput";// $NON-NLS-1$
-
     private static final String PERCENTTHROUGHPUT = "ThroughputController.percentThroughput";// $NON-NLS-1$
 
     private static class MutableInteger{
         private int integer;
         MutableInteger(int value){
-            integer=value;
+            integer = value;
         }
         int incr(){
             return ++integer;
         }
-        public int intValue() {
+        int intValue() {
             return integer;
         }
     }
@@ -75,24 +73,16 @@ public class ThroughputController extends GenericController implements Serializa
     // These items are shared between threads in a group by the clone() method
     // They are initialised by testStarted() so don't need to be serialised
     private transient MutableInteger globalNumExecutions;
-
     private transient MutableInteger globalIteration;
-
     private transient Object counterLock = new Object(); // ensure counts are updated correctly
 
-    /**
-     * Number of iterations on which we've chosen to deliver samplers.
-     */
+    /** Number of iterations on which we've chosen to deliver samplers. */
     private int numExecutions = 0;
 
-    /**
-     * Index of the current iteration. 0-based.
-     */
+    /** Index of the current iteration. 0-based. */
     private int iteration = -1;
 
-    /**
-     * Whether to deliver samplers on this iteration.
-     */
+    /** Whether to deliver samplers on this iteration. */
     private boolean runThisTime;
 
     public ThroughputController() {
@@ -135,12 +125,13 @@ public class ThroughputController extends GenericController implements Serializa
         JMeterProperty prop = getProperty(MAXTHROUGHPUT);
         int retVal = 1;
         if (prop instanceof IntegerProperty) {
-            retVal = ((IntegerProperty) prop).getIntValue();
+            retVal = prop.getIntValue();
         } else {
+            String valueString = prop.getStringValue();
             try {
-                retVal = Integer.parseInt(prop.getStringValue());
+                retVal = Integer.parseInt(valueString);
             } catch (NumberFormatException e) {
-                log.warn("Error parsing "+prop.getStringValue(),e);
+                log.warn("Error parsing '{}'", valueString, e);
             }
         }
         return retVal;
@@ -162,17 +153,19 @@ public class ThroughputController extends GenericController implements Serializa
         JMeterProperty prop = getProperty(PERCENTTHROUGHPUT);
         float retVal = 100;
         if (prop instanceof FloatProperty) {
-            retVal = ((FloatProperty) prop).getFloatValue();
+            retVal = prop.getFloatValue();
         } else {
+            String valueString = prop.getStringValue();
             try {
-                retVal = Float.parseFloat(prop.getStringValue());
+                retVal = Float.parseFloat(valueString);
             } catch (NumberFormatException e) {
-                log.warn("Error parsing "+prop.getStringValue(),e);
+                log.warn("Error parsing '{}'", valueString, e);
             }
         }
         return retVal;
     }
 
+    @SuppressWarnings("SynchronizeOnNonFinalField")
     private int getExecutions() {
         if (!isPerThread()) {
             synchronized (counterLock) {
@@ -182,9 +175,6 @@ public class ThroughputController extends GenericController implements Serializa
         return numExecutions;
     }
 
-    /**
-     * @see org.apache.jmeter.control.Controller#next()
-     */
     @Override
     public Sampler next() {
         if (runThisTime) {
@@ -203,19 +193,19 @@ public class ThroughputController extends GenericController implements Serializa
         return (100.0 * executions + 50.0) / (iterations + 1) < getPercentThroughputAsFloat();
     }
 
-    /**
-     * @see org.apache.jmeter.control.Controller#isDone()
-     */
     @Override
     public boolean isDone() {
-        if (subControllersAndSamplers.size() == 0) {
-            return true;
-        } else if (getStyle() == BYNUMBER && getExecutions() >= getMaxThroughputAsInt()
-                && current >= getSubControllers().size()) {
-            return true;
-        } else {
-            return false;
-        }
+        return subControllersAndSamplers.isEmpty()
+                || 
+                (
+                        (getStyle() == BYNUMBER
+                            && (
+                            (getExecutions() >= getMaxThroughputAsInt()
+                            && current >= getSubControllers().size())
+                            || (getMaxThroughputAsInt() == 0)))
+                        || (getStyle() == BYPERCENT
+                            && Float.compare(getPercentThroughputAsFloat(), 0.0f)==0)
+                        );
     }
 
     @Override
@@ -232,6 +222,7 @@ public class ThroughputController extends GenericController implements Serializa
     }
 
     @Override
+    @SuppressWarnings("SynchronizeOnNonFinalField")
     public void iterationStart(LoopIterationEvent iterEvent) {
         if (!isPerThread()) {
             synchronized (counterLock) {
@@ -251,6 +242,7 @@ public class ThroughputController extends GenericController implements Serializa
     }
 
     @Override
+    @SuppressWarnings("SynchronizeOnNonFinalField")
     public void testStarted() {
         synchronized (counterLock) {
             globalNumExecutions = new MutableInteger(0);
@@ -272,7 +264,7 @@ public class ThroughputController extends GenericController implements Serializa
     public void testEnded(String host) {
         // NOOP
     }
-    
+
     @Override
     protected Object readResolve(){
         super.readResolve();

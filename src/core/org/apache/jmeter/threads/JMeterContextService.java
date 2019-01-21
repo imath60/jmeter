@@ -25,27 +25,25 @@ import org.apache.jmeter.util.JMeterUtils;
  * Keeps track of active and total thread counts.
  */
 public final class JMeterContextService {
-    private static final ThreadLocal<JMeterContext> threadContext = new ThreadLocal<JMeterContext>() {
-        @Override
-        public JMeterContext initialValue() {
-            return new JMeterContext();
-        }
-    };
+    private static final ThreadLocal<JMeterContext> threadContext = ThreadLocal.withInitial(JMeterContext::new);
 
-    //@GuardedGy("this")
+    //@GuardedBy(JMeterContextService.class)
     private static long testStart = 0;
 
-    //@GuardedGy("this")
+    //@GuardedBy(JMeterContextService.class)
     private static int numberOfActiveThreads = 0;
 
-    //@GuardedGy("this")
+    //@GuardedBy(JMeterContextService.class)
     private static int numberOfThreadsStarted = 0;
 
-    //@GuardedGy("this")
+    //@GuardedBy(JMeterContextService.class)
     private static int numberOfThreadsFinished = 0;
 
-    //@GuardedGy("this")
+    //@GuardedBy(JMeterContextService.class)
     private static int totalThreads = 0;
+
+    private static UnmodifiableJMeterVariables variables;
+
 
     /**
      * Private constructor to prevent instantiation.
@@ -132,9 +130,10 @@ public final class JMeterContextService {
      */
     public static synchronized void endTest() {
         testStart = 0;
+        resetClientSideVariables();
     }
 
-    public static synchronized long getTestStartTime() {// NOT USED
+    public static synchronized long getTestStartTime() {
         return testStart;
     }
 
@@ -163,19 +162,43 @@ public final class JMeterContextService {
         numberOfThreadsFinished = 0;
     }
 
+    /**
+     * Get all variables accessible for JMeter client in a distributed test
+     * (only test plan and user defined variables)
+     * Note this is a read-only collection
+     * @return {@link JMeterVariables} available for JMeter client 
+     */
+    public static JMeterVariables getClientSideVariables() {
+        return variables;
+    }
+
     public static class ThreadCounts {
-        
+
         public final int activeThreads;
-        
+
         public final int startedThreads;
-        
+
         public final int finishedThreads;
-        
-        ThreadCounts (int active, int started, int finished) {
+
+        ThreadCounts(int active, int started, int finished) {
             activeThreads = active;
             startedThreads = started;
             finishedThreads = finished;
         }
     }
 
+    /**
+     * Set variables for JMeter client in a distributed test (INTERNAL API)
+     * @param clientSideVariables {@link JMeterVariables}
+     */
+    public static void initClientSideVariables(JMeterVariables clientSideVariables) {
+        JMeterContextService.variables = new UnmodifiableJMeterVariables(clientSideVariables);
+    }
+    
+    /**
+     * Reset client side variables in a distributed mode 
+     */
+    public static void resetClientSideVariables() {
+        JMeterContextService.variables = null;
+    }
 }

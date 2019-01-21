@@ -20,7 +20,6 @@
 package org.apache.jmeter.visualizers;
 
 import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -30,18 +29,14 @@ import java.util.regex.PatternSyntaxException;
 
 import javax.swing.AbstractAction;
 import javax.swing.ActionMap;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
 import javax.swing.InputMap;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.JToolBar;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -52,20 +47,19 @@ import javax.swing.text.Highlighter;
 
 import org.apache.jmeter.gui.action.KeyStrokes;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.visualizers.utils.Colors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SearchTextExtension implements ActionListener, DocumentListener {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(SearchTextExtension.class);
 
     private static final Font FONT_DEFAULT = UIManager.getDefaults().getFont("TextField.font");
 
     private static final Font FONT_SMALL = new Font("SansSerif", Font.PLAIN, (int) Math.round(FONT_DEFAULT.getSize() * 0.8));
 
     private static final String SEARCH_TEXT_COMMAND = "search_text"; // $NON-NLS-1$
-
-    private JLabel label;
 
     private JButton findButton;
 
@@ -74,25 +68,17 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
     private JCheckBox caseChkBox;
 
     private JCheckBox regexpChkBox;
-
-    private JPanel searchPanel;
     
     private String lastTextTofind;
     
     private ISearchTextExtensionProvider searchProvider;
 
-    public void init(JPanel resultsPane) {}
+    private JToolBar toolBar;
 
-    public void setResults(JEditorPane results) {
-        setSearchProvider(new JEditorPaneSearchProvider(results));
-    }
-    
-    public void setSearchProvider(ISearchTextExtensionProvider searchProvider) {
-        if (this.searchProvider != null) {
-            this.searchProvider.resetTextToFind();
-        }
-        
+    public SearchTextExtension(ISearchTextExtensionProvider searchProvider) {
         this.searchProvider = searchProvider;
+        searchProvider.resetTextToFind();
+        createSearchToolBar();
     }
 
     /**
@@ -104,22 +90,23 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
             // new search?
             if (lastTextTofind != null && !lastTextTofind.equals(textToFind)) {
                 searchProvider.resetTextToFind();
+                textToFindField.setBackground(Color.WHITE);
+                textToFindField.setForeground(Color.BLACK);
             }
             
             try {
                 Pattern pattern = createPattern(textToFindField.getText());
                 boolean found = searchProvider.executeAndShowTextFind(pattern);
                 if(found) {
-                    findButton.setText(JMeterUtils.getResString("search_text_button_next"));// $NON-NLS-1$
+                    findButton.setText(JMeterUtils.getResString("search_text_button_find"));// $NON-NLS-1$
                     lastTextTofind = textToFind;
+                    textToFindField.setBackground(Color.WHITE);
+                    textToFindField.setForeground(Color.BLACK);
                 }
                 else {
                     findButton.setText(JMeterUtils.getResString("search_text_button_find"));// $NON-NLS-1$
-                    // Display not found message
-                    JOptionPane.showMessageDialog(null, JMeterUtils
-                            .getResString("search_text_msg_not_found"),// $NON-NLS-1$
-                            JMeterUtils.getResString("search_text_title_not_found"), // $NON-NLS-1$
-                            JOptionPane.INFORMATION_MESSAGE);
+                    textToFindField.setBackground(Colors.LIGHT_RED);
+                    textToFindField.setForeground(Color.WHITE);
                 }
             } catch (PatternSyntaxException pse) {
                 JOptionPane.showMessageDialog(null, 
@@ -129,23 +116,27 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
             }
         }
     }
+    
+    /**
+     * 
+     * @return {@link JToolBar} the search toolbat component
+     */
+    public JToolBar getSearchToolBar() {
+        return toolBar;
+    }
 
     /**
      * Create the text find task pane
      *
      * @return Text find task pane
      */
-    private JPanel createSearchTextPanel() {
+    private JToolBar createSearchToolBar() {
         // Search field
-        searchPanel = new JPanel();
-        searchPanel.setLayout(new BoxLayout(searchPanel, BoxLayout.X_AXIS));
-        searchPanel.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
-        label = new JLabel(JMeterUtils.getResString("search_text_field")); // $NON-NLS-1$
-        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
-        searchPanel.add(label);
         textToFindField = new JTextField(); // $NON-NLS-1$
-        searchPanel.add(textToFindField);
-        searchPanel.add(Box.createRigidArea(new Dimension(5,0)));
+        this.toolBar = new JToolBar();
+        toolBar.setFloatable(false);
+        toolBar.setFont(FONT_SMALL);
+        toolBar.add(textToFindField);
 
         // add listener to intercept texttofind changes and reset search
         textToFindField.getDocument().addDocumentListener(this);
@@ -156,17 +147,17 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
         findButton.setFont(FONT_SMALL);
         findButton.setActionCommand(SEARCH_TEXT_COMMAND);
         findButton.addActionListener(this);
-        searchPanel.add(findButton);
+        toolBar.add(findButton);
 
         // checkboxes
         caseChkBox = new JCheckBox(JMeterUtils
                 .getResString("search_text_chkbox_case"), false); // $NON-NLS-1$
         caseChkBox.setFont(FONT_SMALL);
-        searchPanel.add(caseChkBox);
+        toolBar.add(caseChkBox);
         regexpChkBox = new JCheckBox(JMeterUtils
                 .getResString("search_text_chkbox_regexp"), false); // $NON-NLS-1$
         regexpChkBox.setFont(FONT_SMALL);
-        searchPanel.add(regexpChkBox);
+        toolBar.add(regexpChkBox);
 
         // when Enter is pressed, search start
         InputMap im = textToFindField
@@ -174,18 +165,9 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
         im.put(KeyStrokes.ENTER, SEARCH_TEXT_COMMAND);
         ActionMap am = textToFindField.getActionMap();
         am.put(SEARCH_TEXT_COMMAND, new EnterAction());
-
-        // default not visible
-        searchPanel.setVisible(true);
-        return searchPanel;
+        return toolBar;
     }
 
-    public JPanel createSearchTextExtensionPane() {
-        JPanel pane = new JPanel();
-        pane.setLayout(new BoxLayout(pane, BoxLayout.X_AXIS));
-        pane.add(createSearchTextPanel());
-        return pane;
-    }
 
     /**
      * Display the response as text or as rendered HTML. Change the text on the
@@ -204,7 +186,7 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
     }
 
     private class EnterAction extends AbstractAction {
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = 2L;
         @Override
         public void actionPerformed(ActionEvent ev) {
             executeAndShowTextFind();
@@ -238,22 +220,10 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
     }
 
     private Pattern createPattern(String textToFind) {
-        String textToFindQ = null;
-        if (regexpChkBox.isSelected()) {
-            textToFindQ = textToFind;
-        }
-        else {
-            // desactivate or not specials regexp char
-            textToFindQ = Pattern.quote(textToFind);
-        }
-        
-        Pattern pattern = null;
-        if (caseChkBox.isSelected()) {
-            pattern = Pattern.compile(textToFindQ);
-        } else {
-            pattern = Pattern.compile(textToFindQ, Pattern.CASE_INSENSITIVE);
-        }
-        return pattern;
+        // desactivate or not specials regexp char
+        String textToFindQ = regexpChkBox.isSelected() ? textToFind : Pattern.quote(textToFind);        
+        return caseChkBox.isSelected() ? Pattern.compile(textToFindQ) :
+            Pattern.compile(textToFindQ, Pattern.CASE_INSENSITIVE);
     }
     
     /**
@@ -269,6 +239,7 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
         
         /**
          * Launch find text engine on target component
+         * @param pattern text pattern to search
          * @return true if there was a match, false otherwise
          */
         boolean executeAndShowTextFind(Pattern pattern);
@@ -278,10 +249,10 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
      * JEditorPane search provider
      * Should probably be moved in its on file
      */
-    private static class JEditorPaneSearchProvider implements ISearchTextExtensionProvider {
+    public static class JEditorPaneSearchProvider implements ISearchTextExtensionProvider {
 
         private static volatile int LAST_POSITION_DEFAULT = 0;
-        private static final Color HILIT_COLOR = Color.LIGHT_GRAY;
+        private static final Color HIGHLIGHT_COLOR = Color.GREEN;
         private JEditorPane results;
         private Highlighter selection;
         private Highlighter.HighlightPainter painter;
@@ -292,7 +263,7 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
             
             // prepare highlighter to show text find with search command
             selection = new DefaultHighlighter();
-            painter = new DefaultHighlighter.DefaultHighlightPainter(HILIT_COLOR);
+            painter = new DefaultHighlighter.DefaultHighlightPainter(HIGHLIGHT_COLOR);
             results.setHighlighter(selection);
         }
 
@@ -310,14 +281,12 @@ public class SearchTextExtension implements ActionListener, DocumentListener {
             if (results != null && results.getText().length() > 0
                     && pattern != null) {
 
-                if (log.isDebugEnabled()) {
-                    log.debug("lastPosition=" + lastPosition);
-                }
-                
+                log.debug("lastPosition={}", lastPosition);
+
                 Matcher matcher = null;
                 try {
                     Document contentDoc = results.getDocument();
-                    String body = contentDoc.getText(lastPosition, (contentDoc.getLength() - lastPosition));
+                    String body = contentDoc.getText(lastPosition, contentDoc.getLength() - lastPosition);
                     matcher = pattern.matcher(body);
 
                     if ((matcher != null) && (matcher.find())) {

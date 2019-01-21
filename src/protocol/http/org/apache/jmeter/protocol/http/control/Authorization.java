@@ -19,10 +19,11 @@
 package org.apache.jmeter.protocol.http.control;
 
 import java.io.Serializable;
+import java.nio.charset.Charset;
+import java.util.Base64;
 
 import org.apache.jmeter.config.ConfigElement;
 import org.apache.jmeter.protocol.http.control.AuthManager.Mechanism;
-import org.apache.jmeter.protocol.http.util.Base64Encoder;
 import org.apache.jmeter.testelement.AbstractTestElement;
 
 /**
@@ -37,7 +38,7 @@ public class Authorization extends AbstractTestElement implements Serializable {
 
     private static final String USERNAME = "Authorization.username"; // $NON-NLS-1$
 
-    private static final String PASSWORD = "Authorization.password"; // $NON-NLS-1$
+    private static final String PASSWORD = "Authorization.password"; // $NON-NLS-1$ NOSONAR no hard coded password
 
     private static final String DOMAIN = "Authorization.domain"; // $NON-NLS-1$
 
@@ -70,10 +71,11 @@ public class Authorization extends AbstractTestElement implements Serializable {
     }
 
     public Authorization() {
-        this("","","","","", Mechanism.BASIC_DIGEST);
+        this("","","","","", Mechanism.BASIC);
     }
 
     public void addConfigElement(ConfigElement config) {
+        // NOOP
     }
 
     public String getURL() {
@@ -117,11 +119,11 @@ public class Authorization extends AbstractTestElement implements Serializable {
     }
 
     public Mechanism getMechanism() {
-        return Mechanism.valueOf(getPropertyAsString(MECHANISM, Mechanism.BASIC_DIGEST.name()));
+        return Mechanism.valueOf(getPropertyAsString(MECHANISM, Mechanism.BASIC.name()));
     }
 
     public void setMechanism(Mechanism mechanism) {
-        setProperty(MECHANISM, mechanism.name(), Mechanism.BASIC_DIGEST.name());
+        setProperty(MECHANISM, mechanism.name(), Mechanism.BASIC.name());
     }
 
     // Used for saving entries to a file
@@ -131,6 +133,7 @@ public class Authorization extends AbstractTestElement implements Serializable {
     }
 
     public String toBasicHeader(){
-        return "Basic " + Base64Encoder.encode(getUser() + ":" + getPass());
+        return "Basic " + new String(Base64.getEncoder().encode((getUser() + ":" + getPass()).
+                getBytes(Charset.defaultCharset())), Charset.defaultCharset());
     }
 }

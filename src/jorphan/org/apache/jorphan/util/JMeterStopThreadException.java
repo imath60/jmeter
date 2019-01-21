@@ -21,8 +21,7 @@ package org.apache.jorphan.util;
 /**
  * This Exception is for use by functions etc to signal a Stop Thread condition
  * where there is no access to the normal stop method
- *
- * @version $Revision$
+ * Thread will shutdown after end of current running sampler. 
  */
 public class JMeterStopThreadException extends RuntimeException {
     private static final long serialVersionUID = 240L;
@@ -41,5 +40,9 @@ public class JMeterStopThreadException extends RuntimeException {
 
     public JMeterStopThreadException(Throwable cause) {
         super(cause);
+    }
+
+    public JMeterStopThreadException(String s, Throwable ex, boolean enableSuppression, boolean writableStackTrace) {
+        super(s, ex, enableSuppression, writableStackTrace);
     }
 }

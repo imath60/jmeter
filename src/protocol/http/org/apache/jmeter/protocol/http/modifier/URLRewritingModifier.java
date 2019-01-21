@@ -52,7 +52,6 @@ public class URLRewritingModifier extends AbstractTestElement implements Seriali
 
     private transient Pattern pathExtensionNoEqualsNoQuestionmarkRegexp;
 
-    // transient Perl5Compiler compiler = new Perl5Compiler();
     private static final String ARGUMENT_NAME = "argument_name"; // $NON-NLS-1$
 
     private static final String PATH_EXTENSION = "path_extension"; // $NON-NLS-1$
@@ -132,10 +131,21 @@ public class URLRewritingModifier extends AbstractTestElement implements Seriali
 
     private void modify(HTTPSamplerBase sampler, String value) {
         if (isPathExtension()) {
+            String oldPath = sampler.getPath();
+            int indexOfSessionId = oldPath.indexOf(SEMI_COLON + getArgumentName());
+            if(oldPath.indexOf(SEMI_COLON + getArgumentName())>=0) {
+                int indexOfQuestionMark = oldPath.indexOf('?');
+                if(indexOfQuestionMark < 0) {
+                    oldPath = oldPath.substring(0, indexOfSessionId);
+                } else {
+                    oldPath = oldPath.substring(0, indexOfSessionId)+
+                            oldPath.substring(indexOfQuestionMark);
+                }
+            }
             if (isPathExtensionNoEquals()) {
-                sampler.setPath(sampler.getPath() + SEMI_COLON + getArgumentName() + value); // $NON-NLS-1$
+                sampler.setPath(oldPath + SEMI_COLON + getArgumentName() + value); // $NON-NLS-1$
             } else {
-                sampler.setPath(sampler.getPath() + SEMI_COLON + getArgumentName() + "=" + value); // $NON-NLS-1$ // $NON-NLS-2$
+                sampler.setPath(oldPath + SEMI_COLON + getArgumentName() + "=" + value); // $NON-NLS-1$ // $NON-NLS-2$
             }
         } else {
             sampler.getArguments().removeArgument(getArgumentName());

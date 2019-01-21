@@ -29,25 +29,28 @@
 
 package org.apache.jmeter.threads;
 
+import java.io.Serializable;
 import java.util.List;
 
-//import org.apache.commons.collections.Buffer;
-//import org.apache.commons.collections.BufferUtils;
-//import org.apache.commons.collections.buffer.UnboundedFifoBuffer;
 import org.apache.jmeter.samplers.SampleEvent;
 import org.apache.jmeter.samplers.SampleListener;
 import org.apache.jmeter.testbeans.TestBeanHelper;
 import org.apache.jmeter.testelement.TestElement;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Processes sample events.
+ * Processes sample events. <br>
  * The current implementation processes events in the calling thread
- * using {@link #notifyListeners(SampleEvent, List)}
+ * using {@link #notifyListeners(SampleEvent, List)} <br>
+ * Thread safe class 
  */
-public class ListenerNotifier {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+public class ListenerNotifier implements Serializable {
+    /**
+     * 
+     */
+    private static final long serialVersionUID = -4861457279068497917L;
+    private static final Logger log = LoggerFactory.getLogger(ListenerNotifier.class);
 
 
     /**
@@ -66,7 +69,7 @@ public class ListenerNotifier {
                 TestBeanHelper.prepare((TestElement) sampleListener);
                 sampleListener.sampleOccurred(res);
             } catch (RuntimeException e) {
-                log.error("Detected problem in Listener: ", e);
+                log.error("Detected problem in Listener.", e);
                 log.info("Continuing to process further listeners");
             }
         }

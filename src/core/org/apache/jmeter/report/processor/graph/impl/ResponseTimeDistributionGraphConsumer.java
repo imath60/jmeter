@@ -72,8 +72,7 @@ public class ResponseTimeDistributionGraphConsumer extends
             @Override
             public Double select(Sample sample) {
                 long elapsed = sample.getElapsedTime();
-                return Double.valueOf((elapsed - elapsed % granularity));
-
+                return Double.valueOf((double) elapsed - elapsed % granularity);
             }
         };
     }
@@ -90,7 +89,8 @@ public class ResponseTimeDistributionGraphConsumer extends
 
         groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP, new GroupInfo(
                 new SumAggregatorFactory(), new NameSeriesSelector(),
-                new CountValueSelector(), false, false));
+                // We include Transaction Controller results
+                new CountValueSelector(false), false, false));
 
         return groupInfos;
     }
@@ -106,6 +106,5 @@ public class ResponseTimeDistributionGraphConsumer extends
         parentResult.setResult(
                 AbstractOverTimeGraphConsumer.RESULT_CTX_GRANULARITY,
                 new ValueResultData(Long.valueOf(granularity)));
-
     }
 }

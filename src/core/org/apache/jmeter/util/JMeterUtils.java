@@ -18,21 +18,26 @@
 
 package org.apache.jmeter.util;
 
-import java.awt.Dimension;
+import java.awt.Dialog;
+import java.awt.Font;
+import java.awt.Frame;
 import java.awt.HeadlessException;
-import java.awt.event.ActionListener;
+import java.awt.Window;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -41,42 +46,58 @@ import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Vector;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.UIDefaults;
+import javax.swing.UIManager;
+import javax.swing.plaf.FontUIResource;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.jmeter.gui.GuiPackage;
-import org.apache.jorphan.logging.LoggingManager;
+import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jorphan.reflect.ClassFinder;
 import org.apache.jorphan.test.UnitTestManager;
+import org.apache.jorphan.util.JMeterError;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
 import org.apache.oro.text.MalformedCachePatternException;
 import org.apache.oro.text.PatternCacheLRU;
 import org.apache.oro.text.regex.Pattern;
 import org.apache.oro.text.regex.Perl5Compiler;
 import org.apache.oro.text.regex.Perl5Matcher;
-import org.xml.sax.XMLReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.security.AnyTypePermission;
+import com.thoughtworks.xstream.security.NoTypePermission;
 
 /**
  * This class contains the static utility methods used by JMeter.
  *
  */
 public class JMeterUtils implements UnitTestManager {
-    private static final Logger log = LoggingManager.getLoggerForClass();
-    
+    private static final Logger log = LoggerFactory.getLogger(JMeterUtils.class);
+
+    private static final String JMETER_VARS_PREFIX = "__jm__";
+    public static final String THREAD_GROUP_DISTRIBUTED_PREFIX_PROPERTY_NAME = "__jm.D_TG";
+
     // Note: cannot use a static variable here, because that would be processed before the JMeter properties
     // have been defined (Bug 52783)
     private static class LazyPatternCacheHolder {
+        private LazyPatternCacheHolder() {
+            super();
+        }
         public static final PatternCacheLRU INSTANCE = new PatternCacheLRU(
                 getPropDefault("oro.patterncache.size",1000), // $NON-NLS-1$
                 new Perl5Compiler());
     }
+
+    public static final String RES_KEY_PFX = "[res_key="; // $NON-NLS-1$
 
     private static final String EXPERT_MODE_PROPERTY = "jmeter.expertMode"; // $NON-NLS-1$
     
@@ -91,13 +112,13 @@ public class JMeterUtils implements UnitTestManager {
     private static volatile ResourceBundle resources;
 
     // What host am I running on?
-
-    //@GuardedBy("this")
     private static String localHostIP = null;
-    //@GuardedBy("this")
     private static String localHostName = null;
-    //@GuardedBy("this")
     private static String localHostFullName = null;
+    
+    // TODO needs to be synch? Probably not changed after threads have started
+    private static String jmDir; // JMeter Home directory (excludes trailing separator)
+    private static String jmBin; // JMeter bin directory (excludes trailing separator)
 
     private static volatile boolean ignoreResorces = false; // Special flag for use in debugging resources
 
@@ -131,21 +152,21 @@ public class JMeterUtils implements UnitTestManager {
      * @return the Properties from the file
      * @see #getJMeterProperties()
      * @see #loadJMeterProperties(String)
-     * @see #initLogging()
      * @see #initLocale()
      */
     public static Properties getProperties(String file) {
         loadJMeterProperties(file);
-        initLogging();
         initLocale();
         return appProperties;
     }
 
     /**
      * Initialise JMeter logging
+     * @deprecated does not do anything anymore
      */
+    @Deprecated
     public static void initLogging() {
-        LoggingManager.initializeLogging(appProperties);
+        // NOOP
     }
 
     /**
@@ -160,7 +181,6 @@ public class JMeterUtils implements UnitTestManager {
             } else {
                 setLocale(new Locale(loc, "")); // $NON-NLS-1$
             }
-
         } else {
             setLocale(Locale.getDefault());
         }
@@ -185,15 +205,14 @@ public class JMeterUtils implements UnitTestManager {
             p.load(is);
         } catch (IOException e) {
             try {
-                is =
-                    ClassLoader.getSystemResourceAsStream("org/apache/jmeter/jmeter.properties"); // $NON-NLS-1$
+                is = ClassLoader.getSystemResourceAsStream(
+                        "org/apache/jmeter/jmeter.properties"); // $NON-NLS-1$
                 if (is == null) {
-                    throw new RuntimeException("Could not read JMeter properties file:"+file);
+                    throw new RuntimeException("Could not read JMeter properties file:" + file);
                 }
                 p.load(is);
             } catch (IOException ex) {
-                // JMeter.fail("Could not read internal resource. " +
-                // "Archive is broken.");
+                throw new RuntimeException("Could not read JMeter properties file:" + file);
             }
         } finally {
             JOrphanUtils.closeQuietly(is);
@@ -233,17 +252,17 @@ public class JMeterUtils implements UnitTestManager {
             try {
                 final URL resource = JMeterUtils.class.getClassLoader().getResource(file);
                 if (resource == null) {
-                    log.warn("Cannot find " + file);
+                    log.warn("Cannot find {}", file);
                     return defaultProps;
                 }
                 is = resource.openStream();
                 if (is == null) {
-                    log.warn("Cannot open " + file);
+                    log.warn("Cannot open {}", file);
                     return defaultProps;
                 }
                 p.load(is);
             } catch (IOException ex) {
-                log.warn("Error reading " + file + " " + ex.toString());
+                log.warn("Error reading {} {}", file, ex.toString());
                 return defaultProps;
             }
         } finally {
@@ -287,7 +306,7 @@ public class JMeterUtils implements UnitTestManager {
 
     @Override
     public void initializeProperties(String file) {
-        System.out.println("Initializing Properties: " + file);
+        System.out.println("Initializing Properties: " + file); // NOSONAR intentional
         getProperties(file);
     }
 
@@ -346,7 +365,7 @@ public class JMeterUtils implements UnitTestManager {
      *            new locale
      */
     public static void setLocale(Locale loc) {
-        log.info("Setting Locale to " + loc.toString());
+        log.info("Setting Locale to {}", loc);
         /*
          * See bug 29920. getBundle() defaults to the property file for the
          * default Locale before it defaults to the base property file, so we
@@ -365,7 +384,7 @@ public class JMeterUtils implements UnitTestManager {
                 def = null; // no need to reset Locale
             }
         }
-        if (loc.toString().equals("ignoreResources")){ // $NON-NLS-1$
+        if ("ignoreResources".equals(loc.toString())){ // $NON-NLS-1$
             log.warn("Resource bundles will be ignored");
             ignoreResorces = true;
             // Keep existing settings
@@ -375,12 +394,13 @@ public class JMeterUtils implements UnitTestManager {
             resources = resBund;
             locale = loc;
             final Locale resBundLocale = resBund.getLocale();
-            if (isDefault || resBundLocale.equals(loc)) {// language change worked
-            // Check if we at least found the correct language:
-            } else if (resBundLocale.getLanguage().equals(loc.getLanguage())) {
-                log.info("Could not find resources for '"+loc.toString()+"', using '"+resBundLocale.toString()+"'");
-            } else {
-                log.error("Could not find resources for '"+loc.toString()+"'");
+            if (!isDefault && !resBundLocale.equals(loc)) {
+                // Check if we at least found the correct language:
+                if (resBundLocale.getLanguage().equals(loc.getLanguage())) {
+                    log.info("Could not find resources for '{}', using '{}'", loc, resBundLocale);
+                } else {
+                    log.error("Could not find resources for '{}'", loc);
+                }
             }
         }
         notifyLocaleChangeListeners();
@@ -456,8 +476,6 @@ public class JMeterUtils implements UnitTestManager {
                 forcedLocale); 
     }
 
-    public static final String RES_KEY_PFX = "[res_key="; // $NON-NLS-1$
-
     /**
      * Gets the resource string for this key.
      *
@@ -478,14 +496,15 @@ public class JMeterUtils implements UnitTestManager {
         return getResStringDefault(key, defaultValue);
     }
 
-    /*
+    /**
      * Helper method to do the actual work of fetching resources; allows
      * getResString(S,S) to be deprecated without affecting getResString(S);
      */
     private static String getResStringDefault(String key, String defaultValue) {
         return getResStringDefault(key, defaultValue, null);
     }
-    /*
+
+    /**
      * Helper method to do the actual work of fetching resources; allows
      * getResString(S,S) to be deprecated without affecting getResString(S);
      */
@@ -499,27 +518,73 @@ public class JMeterUtils implements UnitTestManager {
         String resString = null;
         try {
             ResourceBundle bundle = resources;
-            if(forcedLocale != null) {
-                bundle = ResourceBundle.getBundle("org.apache.jmeter.resources.messages", forcedLocale); // $NON-NLS-1$
+            if (forcedLocale != null || bundle == null) {
+                bundle = getBundle(forcedLocale);
             }
+            
             if (bundle.containsKey(resKey)) {
                 resString = bundle.getString(resKey);
             } else {
-                log.warn("ERROR! Resource string not found: [" + resKey + "]");
-                resString = defaultValue;                
+                if(defaultValue == null) {
+                    log.warn("ERROR! Resource string not found: [{}]", resKey);
+                } else {
+                    log.debug("Resource string not found: [{}], using default value {}", resKey, defaultValue);
+                }
+                resString = defaultValue;
             }
             if (ignoreResorces ){ // Special mode for debugging resource handling
                 return "["+key+"]";
             }
-        } catch (MissingResourceException mre) {
+        } catch (MissingResourceException mre) { // NOSONAR We handle correctly exception
             if (ignoreResorces ){ // Special mode for debugging resource handling
                 return "[?"+key+"?]";
             }
-            log.warn("ERROR! Resource string not found: [" + resKey + "]", mre);
+            if(defaultValue == null) {
+                log.warn("ERROR! Resource string not found: [{}]", resKey);
+            } else {
+                log.debug("Resource string not found: [{}], using default value {}", resKey, defaultValue);
+            }
             resString = defaultValue;
         }
         return resString;
     }
+
+    /**
+     * Try to get a {@link ResourceBundle} for the given {@code forcedLocale}.
+     * If none is found try to fallback to the bundle for the set {@link Locale}
+     * 
+     * @param forcedLocale the {@link Locale} which should be used first
+     * @return the resolved {@link ResourceBundle} or {@code null}, if none could be found
+     */
+    private static ResourceBundle getBundle(Locale forcedLocale) {
+        for (Locale locale: Arrays.asList(forcedLocale, getLocale())) {
+            if(locale != null) {
+                ResourceBundle bundle = ResourceBundle.getBundle("org.apache.jmeter.resources.messages", locale); // $NON-NLS-1$
+                if (bundle == null) {
+                    log.warn("Could not resolve ResourceBundle for Locale [{}]", locale);
+                } else {
+                    return bundle;
+                }
+            }
+        }
+        return new DummyResourceBundle();
+    }
+
+    /**
+     * Simple {@link ResourceBundle}, that handles questions for every key, by giving the key back as an answer.
+     */
+    private static class DummyResourceBundle extends ResourceBundle {
+
+        @Override
+        protected Object handleGetObject(String key) {
+            return "[" + key + "]";
+        }
+
+        @Override
+        public Enumeration<String> getKeys() {
+            return Collections.emptyEnumeration();
+        }
+    };
 
     /**
      * To get I18N label from properties file
@@ -530,7 +595,11 @@ public class JMeterUtils implements UnitTestManager {
      */
     public static String getParsedLabel(String key) {
         String value = JMeterUtils.getResString(key);
-        return value.replaceFirst("(?m)\\s*?:\\s*$", ""); // $NON-NLS-1$ $NON-NLS-2$
+        if(value != null) {
+            return value.replaceFirst("(?m)\\s*?:\\s*$", ""); // $NON-NLS-1$ $NON-NLS-2$
+        } else {
+            return null;
+        }
     }
     
     /**
@@ -578,11 +647,11 @@ public class JMeterUtils implements UnitTestManager {
             if(url != null) {
                 return new ImageIcon(url); // $NON-NLS-1$
             } else {
-                log.warn("no icon for " + name);
+                log.warn("no icon for {}", name);
                 return null;                
             }
         } catch (NoClassDefFoundError | InternalError e) {// Can be returned by headless hosts
-            log.info("no icon for " + name + " " + e.getMessage());
+            log.info("no icon for {} {}", name, e.getMessage());
             return null;
         }
     }
@@ -608,173 +677,21 @@ public class JMeterUtils implements UnitTestManager {
     }
 
     public static String getResourceFileAsText(String name) {
-        BufferedReader fileReader = null;
         try {
             String lineEnd = System.getProperty("line.separator"); // $NON-NLS-1$
             InputStream is = JMeterUtils.class.getClassLoader().getResourceAsStream(name);
             if(is != null) {
-                fileReader = new BufferedReader(new InputStreamReader(is));
-                StringBuilder text = new StringBuilder();
-                String line;
-                while ((line = fileReader.readLine()) != null) {
-                    text.append(line);
-                    text.append(lineEnd);
+                try (Reader in = new InputStreamReader(is);
+                        BufferedReader fileReader = new BufferedReader(in)) {
+                    return fileReader.lines()
+                            .collect(Collectors.joining(lineEnd, "", lineEnd));
                 }
-                // Done by finally block: fileReader.close();
-                return text.toString();
             } else {
                 return ""; // $NON-NLS-1$                
             }
         } catch (IOException e) {
             return ""; // $NON-NLS-1$
-        } finally {
-            IOUtils.closeQuietly(fileReader);
         }
-    }
-
-    /**
-     * Creates the vector of Timers plugins.
-     *
-     * @param properties
-     *            Description of Parameter
-     * @return The Timers value
-     */
-    public static Vector<Object> getTimers(Properties properties) {
-        return instantiate(getVector(properties, "timer."), // $NON-NLS-1$
-                "org.apache.jmeter.timers.Timer"); // $NON-NLS-1$
-    }
-
-    /**
-     * Creates the vector of visualizer plugins.
-     *
-     * @param properties
-     *            Description of Parameter
-     * @return The Visualizers value
-     */
-    public static Vector<Object> getVisualizers(Properties properties) {
-        return instantiate(getVector(properties, "visualizer."), // $NON-NLS-1$
-                "org.apache.jmeter.visualizers.Visualizer"); // $NON-NLS-1$
-    }
-
-    /**
-     * Creates a vector of SampleController plugins.
-     *
-     * @param properties
-     *            The properties with information about the samplers
-     * @return The Controllers value
-     */
-    // TODO - does not appear to be called directly
-    public static Vector<Object> getControllers(Properties properties) {
-        String name = "controller."; // $NON-NLS-1$
-        Vector<Object> v = new Vector<>();
-        Enumeration<?> names = properties.keys();
-        while (names.hasMoreElements()) {
-            String prop = (String) names.nextElement();
-            if (prop.startsWith(name)) {
-                Object o = instantiate(properties.getProperty(prop),
-                        "org.apache.jmeter.control.SamplerController"); // $NON-NLS-1$
-                v.addElement(o);
-            }
-        }
-        return v;
-    }
-
-    /**
-     * Create a string of class names for a particular SamplerController
-     *
-     * @param properties
-     *            The properties with info about the samples.
-     * @param name
-     *            The name of the sampler controller.
-     * @return The TestSamples value
-     */
-    public static String[] getTestSamples(Properties properties, String name) {
-        Vector<String> vector = getVector(properties, name + ".testsample"); // $NON-NLS-1$
-        return vector.toArray(new String[vector.size()]);
-    }
-
-    /**
-     * Create an instance of an org.xml.sax.Parser based on the default props.
-     *
-     * @return The XMLParser value
-     */
-    // TODO only called by UserParameterXMLParser.getXMLParameters which is a deprecated class
-    public static XMLReader getXMLParser() {
-        final String parserName = getPropDefault("xml.parser", // $NON-NLS-1$
-                "org.apache.xerces.parsers.SAXParser");  // $NON-NLS-1$
-        return (XMLReader) instantiate(parserName,
-                "org.xml.sax.XMLReader"); // $NON-NLS-1$
-    }
-
-    /**
-     * Creates the vector of alias strings.
-     * <p>
-     * The properties will be filtered by all values starting with
-     * <code>alias.</code>. The matching entries will be used for the new
-     * {@link Hashtable} while the prefix <code>alias.</code> will be stripped
-     * of the keys.
-     *
-     * @param properties
-     *            the input values
-     * @return The Alias value
-     */
-    public static Hashtable<String, String> getAlias(Properties properties) {
-        return getHashtable(properties, "alias."); // $NON-NLS-1$
-    }
-
-    /**
-     * Creates a vector of strings for all the properties that start with a
-     * common prefix.
-     *
-     * @param properties
-     *            Description of Parameter
-     * @param name
-     *            Description of Parameter
-     * @return The Vector value
-     */
-    public static Vector<String> getVector(Properties properties, String name) {
-        Vector<String> v = new Vector<>();
-        Enumeration<?> names = properties.keys();
-        while (names.hasMoreElements()) {
-            String prop = (String) names.nextElement();
-            if (prop.startsWith(name)) {
-                v.addElement(properties.getProperty(prop));
-            }
-        }
-        return v;
-    }
-
-    /**
-     * Creates a table of strings for all the properties that start with a
-     * common prefix.
-     * <p>
-     * So if you have {@link Properties} <code>prop</code> with two entries, say
-     * <ul>
-     * <li>this.test</li>
-     * <li>that.something</li>
-     * </ul>
-     * And would call this method with a <code>prefix</code> <em>this</em>, the
-     * result would be a new {@link Hashtable} with one entry, which key would
-     * be <em>test</em>.
-     *
-     * @param properties
-     *            input to search
-     * @param prefix
-     *            to match against properties
-     * @return a Hashtable where the keys are the original matching keys with
-     *         the prefix removed
-     */
-    public static Hashtable<String, String> getHashtable(Properties properties, String prefix) {
-        Hashtable<String, String> t = new Hashtable<>();
-        Enumeration<?> names = properties.keys();
-        final int length = prefix.length();
-        while (names.hasMoreElements()) {
-            String prop = (String) names.nextElement();
-            if (prop.startsWith(prefix)) {
-                t.put(prop.substring(length), properties.getProperty(prop));
-            }
-        }
-        return t;
     }
 
     /**
@@ -791,7 +708,7 @@ public class JMeterUtils implements UnitTestManager {
         try {
             ans = Integer.parseInt(appProperties.getProperty(propName, Integer.toString(defaultVal)).trim());
         } catch (Exception e) {
-            log.warn("Exception '"+ e.getMessage()+ "' occurred when fetching int property:'"+propName+"', defaulting to:"+defaultVal);
+            log.warn("Exception '{}' occurred when fetching int property:'{}', defaulting to: {}", e.getMessage() , propName, defaultVal);
             ans = defaultVal;
         }
         return ans;
@@ -810,15 +727,15 @@ public class JMeterUtils implements UnitTestManager {
         boolean ans;
         try {
             String strVal = appProperties.getProperty(propName, Boolean.toString(defaultVal)).trim();
-            if (strVal.equalsIgnoreCase("true") || strVal.equalsIgnoreCase("t")) { // $NON-NLS-1$  // $NON-NLS-2$
+            if ("true".equalsIgnoreCase(strVal) || "t".equalsIgnoreCase(strVal)) { // $NON-NLS-1$  // $NON-NLS-2$
                 ans = true;
-            } else if (strVal.equalsIgnoreCase("false") || strVal.equalsIgnoreCase("f")) { // $NON-NLS-1$  // $NON-NLS-2$
+            } else if ("false".equalsIgnoreCase(strVal) || "f".equalsIgnoreCase(strVal)) { // $NON-NLS-1$  // $NON-NLS-2$
                 ans = false;
             } else {
                 ans = Integer.parseInt(strVal) == 1;
             }
         } catch (Exception e) {
-            log.warn("Exception '"+ e.getMessage()+ "' occurred when fetching boolean property:'"+propName+"', defaulting to:"+defaultVal);
+            log.warn("Exception '{}' occurred when fetching boolean property:'{}', defaulting to: {}", e.getMessage(), propName, defaultVal);
             ans = defaultVal;
         }
         return ans;
@@ -838,7 +755,27 @@ public class JMeterUtils implements UnitTestManager {
         try {
             ans = Long.parseLong(appProperties.getProperty(propName, Long.toString(defaultVal)).trim());
         } catch (Exception e) {
-            log.warn("Exception '"+ e.getMessage()+ "' occurred when fetching long property:'"+propName+"', defaulting to:"+defaultVal);
+            log.warn("Exception '{}' occurred when fetching long property:'{}', defaulting to: {}", e.getMessage(), propName, defaultVal);
+            ans = defaultVal;
+        }
+        return ans;
+    }
+    
+    /**
+     * Get a float value with default if not present.
+     *
+     * @param propName
+     *            the name of the property.
+     * @param defaultVal
+     *            the default value.
+     * @return The PropDefault value
+     */
+    public static float getPropDefault(String propName, float defaultVal) {
+        float ans;
+        try {
+            ans = Float.parseFloat(appProperties.getProperty(propName, Float.toString(defaultVal)).trim());
+        } catch (Exception e) {
+            log.warn("Exception '{}' occurred when fetching float property:'{}', defaulting to: {}", e.getMessage(), propName, defaultVal);
             ans = defaultVal;
         }
         return ans;
@@ -851,7 +788,7 @@ public class JMeterUtils implements UnitTestManager {
      *            the name of the property.
      * @param defaultVal
      *            the default value.
-     * @return The PropDefault value
+     * @return The PropDefault value applying a trim on it
      */
     public static String getPropDefault(String propName, String defaultVal) {
         String ans = defaultVal;
@@ -862,7 +799,7 @@ public class JMeterUtils implements UnitTestManager {
                 ans = value.trim();
             }
         } catch (Exception e) {
-            log.warn("Exception '"+ e.getMessage()+ "' occurred when fetching String property:'"+propName+"', defaulting to:"+defaultVal);
+            log.warn("Exception '{}' occurred when fetching String property:'{}', defaulting to: {}", e.getMessage(), propName, defaultVal);
             ans = defaultVal;
         }
         return ans;
@@ -880,7 +817,7 @@ public class JMeterUtils implements UnitTestManager {
         try {
             ans = appProperties.getProperty(propName);
         } catch (Exception e) {
-            log.warn("Exception '"+ e.getMessage()+ "' occurred when fetching String property:'"+propName+"'");
+            log.warn("Exception '{}' occurred when fetching String property:'{}'", e.getMessage(), propName);
             ans = null;
         }
         return ans;
@@ -900,203 +837,76 @@ public class JMeterUtils implements UnitTestManager {
     }
 
     /**
-     * Sets the selection of the JComboBox to the Object 'name' from the list in
-     * namVec.
-     * NOTUSED?
-     * @param properties not used at the moment
-     * @param combo {@link JComboBox} to work on
-     * @param namVec List of names, which are displayed in <code>combo</code>
-     * @param name Name, that is to be selected. It has to be in <code>namVec</code>
-     */
-    public static void selJComboBoxItem(Properties properties, JComboBox<?> combo, Vector<?> namVec, String name) {
-        int idx = namVec.indexOf(name);
-        combo.setSelectedIndex(idx);
-        // Redisplay.
-        combo.updateUI();
-    }
-
-    /**
-     * Instatiate an object and guarantee its class.
-     *
-     * @param className
-     *            The name of the class to instantiate.
-     * @param impls
-     *            The name of the class it must be an instance of
-     * @return an instance of the class, or null if instantiation failed or the class did not implement/extend as required 
-     */
-    // TODO probably not needed
-    public static Object instantiate(String className, String impls) {
-        if (className != null) {
-            className = className.trim();
-        }
-
-        if (impls != null) {
-            impls = impls.trim();
-        }
-
-        try {
-            Class<?> c = Class.forName(impls);
-            try {
-                Class<?> o = Class.forName(className);
-                Object res = o.newInstance();
-                if (c.isInstance(res)) {
-                    return res;
-                }
-                throw new IllegalArgumentException(className + " is not an instance of " + impls);
-            } catch (ClassNotFoundException e) {
-                log.error("Error loading class " + className + ": class is not found");
-            } catch (IllegalAccessException e) {
-                log.error("Error loading class " + className + ": does not have access");
-            } catch (InstantiationException e) {
-                log.error("Error loading class " + className + ": could not instantiate");
-            } catch (NoClassDefFoundError e) {
-                log.error("Error loading class " + className + ": couldn't find class " + e.getMessage());
-            }
-        } catch (ClassNotFoundException e) {
-            log.error("Error loading class " + impls + ": was not found.");
-        }
-        return null;
-    }
-
-    /**
-     * Instantiate a vector of classes
-     *
-     * @param v
-     *            Description of Parameter
-     * @param className
-     *            Description of Parameter
-     * @return Description of the Returned Value
-     */
-    public static Vector<Object> instantiate(Vector<String> v, String className) {
-        Vector<Object> i = new Vector<>();
-        try {
-            Class<?> c = Class.forName(className);
-            Enumeration<String> elements = v.elements();
-            while (elements.hasMoreElements()) {
-                String name = elements.nextElement();
-                try {
-                    Object o = Class.forName(name).newInstance();
-                    if (c.isInstance(o)) {
-                        i.addElement(o);
-                    }
-                } catch (ClassNotFoundException e) {
-                    log.error("Error loading class " + name + ": class is not found");
-                } catch (IllegalAccessException e) {
-                    log.error("Error loading class " + name + ": does not have access");
-                } catch (InstantiationException e) {
-                    log.error("Error loading class " + name + ": could not instantiate");
-                } catch (NoClassDefFoundError e) {
-                    log.error("Error loading class " + name + ": couldn't find class " + e.getMessage());
-                }
-            }
-        } catch (ClassNotFoundException e) {
-            log.error("Error loading class " + className + ": class is not found");
-        }
-        return i;
-    }
-
-    /**
-     * Create a button with the netscape style
-     *
-     * @param name
-     *            Description of Parameter
-     * @param listener
-     *            Description of Parameter
-     * @return Description of the Returned Value
-     */
-    public static JButton createButton(String name, ActionListener listener) {
-        JButton button = new JButton(getImage(name + ".on.gif")); // $NON-NLS-1$
-        button.setDisabledIcon(getImage(name + ".off.gif")); // $NON-NLS-1$
-        button.setRolloverIcon(getImage(name + ".over.gif")); // $NON-NLS-1$
-        button.setPressedIcon(getImage(name + ".down.gif")); // $NON-NLS-1$
-        button.setActionCommand(name);
-        button.addActionListener(listener);
-        button.setRolloverEnabled(true);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
-        button.setOpaque(false);
-        button.setPreferredSize(new Dimension(24, 24));
-        return button;
-    }
-
-    /**
-     * Create a button with the netscape style
-     *
-     * @param name
-     *            Description of Parameter
-     * @param listener
-     *            Description of Parameter
-     * @return Description of the Returned Value
-     */
-    public static JButton createSimpleButton(String name, ActionListener listener) {
-        JButton button = new JButton(getImage(name + ".gif")); // $NON-NLS-1$
-        button.setActionCommand(name);
-        button.addActionListener(listener);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
-        button.setOpaque(false);
-        button.setPreferredSize(new Dimension(25, 25));
-        return button;
-    }
-
-
-    /**
      * Report an error through a dialog box.
      * Title defaults to "error_title" resource string
      * @param errorMsg - the error message.
      */
     public static void reportErrorToUser(String errorMsg) {
-        reportErrorToUser(errorMsg, JMeterUtils.getResString("error_title")); // $NON-NLS-1$
+        reportErrorToUser(errorMsg, JMeterUtils.getResString("error_title"), null); // $NON-NLS-1$
     }
 
     /**
-     * Report an error through a dialog box.
+     * Report an error through a dialog box in GUI mode 
+     * or in logs and stdout in Non GUI mode
      *
      * @param errorMsg - the error message.
      * @param titleMsg - title string
      */
     public static void reportErrorToUser(String errorMsg, String titleMsg) {
+        reportErrorToUser(errorMsg, titleMsg, null);
+    }
+
+    /**
+     * Report an error through a dialog box.
+     * Title defaults to "error_title" resource string
+     * @param errorMsg - the error message.
+     * @param exception {@link Exception}
+     */
+    public static void reportErrorToUser(String errorMsg, Exception exception) {
+        reportErrorToUser(errorMsg, JMeterUtils.getResString("error_title"), exception);
+    }
+
+    /**
+     * Report an error through a dialog box in GUI mode 
+     * or in logs and stdout in Non GUI mode
+     *
+     * @param errorMsg - the error message.
+     * @param titleMsg - title string
+     * @param exception Exception
+     */
+    public static void reportErrorToUser(String errorMsg, String titleMsg, Exception exception) {
         if (errorMsg == null) {
             errorMsg = "Unknown error - see log file";
             log.warn("Unknown error", new Throwable("errorMsg == null"));
         }
         GuiPackage instance = GuiPackage.getInstance();
         if (instance == null) {
-            System.out.println(errorMsg);
+            if(exception != null) {
+                log.error(errorMsg, exception);
+            } else {
+                log.error(errorMsg);
+            }
+            System.out.println(errorMsg); // NOSONAR intentional
             return; // Done
         }
         try {
             JOptionPane.showMessageDialog(instance.getMainFrame(),
-                    errorMsg,
+                    formatMessage(errorMsg),
                     titleMsg,
                     JOptionPane.ERROR_MESSAGE);
         } catch (HeadlessException e) {
-            log.warn("reportErrorToUser(\"" + errorMsg + "\") caused", e);
+            log.warn("reportErrorToUser(\"{}\") caused", errorMsg, e);
         }
     }
 
-    /**
-     * Finds a string in an array of strings and returns the
-     *
-     * @param array
-     *            Array of strings.
-     * @param value
-     *            String to compare to array values.
-     * @return Index of value in array, or -1 if not in array.
-     */
-    //TODO - move to JOrphanUtils?
-    public static int findInArray(String[] array, String value) {
-        int count = -1;
-        int index = -1;
-        if (array != null && value != null) {
-            while (++count < array.length) {
-                if (array[count] != null && array[count].equals(value)) {
-                    index = count;
-                    break;
-                }
-            }
-        }
-        return index;
+    private static JScrollPane formatMessage(String errorMsg) {
+        JTextArea ta = new JTextArea(10, 50);
+        ta.setText(errorMsg);
+        ta.setWrapStyleWord(true);
+        ta.setLineWrap(true);
+        ta.setCaretPosition(0);
+        ta.setEditable(false);
+        return new JScrollPane(ta);
     }
 
     /**
@@ -1156,6 +966,13 @@ public class JMeterUtils implements UnitTestManager {
         }
         return retVal.toString();
     }
+    
+    /**
+     * @return true if test is running
+     */
+    public static boolean isTestRunning() {
+        return JMeterContextService.getTestStartTime()>0;
+    }
 
     /**
      * Get the JMeter home directory - does not include the trailing separator.
@@ -1180,11 +997,6 @@ public class JMeterUtils implements UnitTestManager {
         jmBin = jmDir + File.separator + "bin"; // $NON-NLS-1$
     }
 
-    // TODO needs to be synch? Probably not changed after threads have started
-    private static String jmDir; // JMeter Home directory (excludes trailing separator)
-    private static String jmBin; // JMeter bin directory (excludes trailing separator)
-
-
     /**
      * Gets the JMeter Version.
      *
@@ -1207,7 +1019,7 @@ public class JMeterUtils implements UnitTestManager {
      * Determine whether we are in 'expert' mode. Certain features may be hidden
      * from user's view unless in expert mode.
      *
-     * @return true iif we're in expert mode
+     * @return true if we're in expert mode
      */
     public static boolean isExpertMode() {
         return JMeterUtils.getPropDefault(EXPERT_MODE_PROPERTY, false);
@@ -1318,14 +1130,15 @@ public class JMeterUtils implements UnitTestManager {
      */
     public static void runSafe(boolean synchronous, Runnable runnable) {
         if(SwingUtilities.isEventDispatchThread()) {
-            runnable.run();
+            runnable.run();//NOSONAR
         } else {
             if (synchronous) {
                 try {
                     SwingUtilities.invokeAndWait(runnable);
                 } catch (InterruptedException e) {
-                    log.warn("Interrupted in thread "
-                            + Thread.currentThread().getName(), e);
+                    log.warn("Interrupted in thread {}",
+                            Thread.currentThread().getName(), e);
+                    Thread.currentThread().interrupt();
                 } catch (InvocationTargetException e) {
                     throw new Error(e);
                 }
@@ -1339,7 +1152,7 @@ public class JMeterUtils implements UnitTestManager {
      * Help GC by triggering GC and finalization
      */
     public static void helpGC() {
-        System.gc();
+        System.gc(); // NOSONAR Intentional
         System.runFinalization();
     }
 
@@ -1385,4 +1198,98 @@ public class JMeterUtils implements UnitTestManager {
         }
     }
 
+    /**
+     * Return delimiterValue handling the TAB case
+     * @param delimiterValue Delimited value 
+     * @return String delimited modified to handle correctly tab
+     * @throws JMeterError if delimiterValue has a length different from 1
+     */
+    public static String getDelimiter(String delimiterValue) {
+        if ("\\t".equals(delimiterValue)) {// Make it easier to enter a tab (can use \<tab> but that is awkward)
+            delimiterValue="\t";
+        }
+
+        if (delimiterValue.length() != 1){
+            throw new JMeterError("Delimiter '"+delimiterValue+"' must be of length 1.");
+        }
+        return delimiterValue;
+    }
+
+    /**
+     * Apply HiDPI scale factor on font if HiDPI mode is enabled
+     */
+    public static void applyHiDPIOnFonts() {
+        if (!getHiDPIMode()) {
+            return;
+        }
+        applyScaleOnFonts((float) getHiDPIScaleFactor());
+    }
+    
+    /**
+     * Apply HiDPI scale factor on fonts
+     * @param scale float scale to apply
+     */
+    public static void applyScaleOnFonts(final float scale) {
+        log.info("Applying HiDPI scale: {}", scale);
+        SwingUtilities.invokeLater(() -> {
+            UIDefaults defaults = UIManager.getLookAndFeelDefaults();
+            // If I iterate over the entrySet under ubuntu with jre 1.8.0_121
+            // the font objects are missing, so iterate over the keys, only
+            for (Object key : new ArrayList<>(defaults.keySet())) {
+                Object value = defaults.get(key);
+                log.debug("Try key {} with value {}", key, value);
+                if (value instanceof Font) {
+                    Font font = (Font) value;
+                    final float newSize = font.getSize() * scale;
+                    if (font instanceof FontUIResource) {
+                        defaults.put(key, new FontUIResource(font.getName(),
+                                font.getStyle(), Math.round(newSize)));
+                    } else {
+                        defaults.put(key, font.deriveFont(newSize));
+                    }
+                }
+            }
+            JMeterUtils.refreshUI();
+        });
+    }
+
+    /**
+     * Refresh UI after LAF change or resizing
+     */
+    public static final void refreshUI() {
+        for (Window w : Window.getWindows()) {
+            SwingUtilities.updateComponentTreeUI(w);
+            if (w.isDisplayable() &&
+                (w instanceof Frame ? !((Frame)w).isResizable() :
+                w instanceof Dialog ? !((Dialog)w).isResizable() :
+                true)) {
+                w.pack();
+            }
+        }
+    }
+
+    /**
+     * Setup default security policy
+     * @param xstream {@link XStream}
+     */
+    public static void setupXStreamSecurityPolicy(XStream xstream) {
+        // This will lift the insecure warning
+        xstream.addPermission(NoTypePermission.NONE);
+        // We reapply very permissive policy
+        // See https://groups.google.com/forum/#!topic/xstream-user/wiKfdJPL8aY
+        // TODO : How much are we concerned by CVE-2013-7285 
+        xstream.addPermission(AnyTypePermission.ANY);
+    }
+    
+    /**
+     * @param elementName String elementName
+     * @return variable name for index following JMeter convention
+     */
+    public static String formatJMeterExportedVariableName(String elementName) {
+        StringBuilder builder = new StringBuilder(
+                JMETER_VARS_PREFIX.length()+elementName.length());
+        return builder.append(JMETER_VARS_PREFIX)
+                .append(elementName)
+                .toString();
+    }
 }

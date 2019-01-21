@@ -18,58 +18,68 @@
 
 package org.apache.jmeter.protocol.http.parser;
 
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * BaseParser is the base class for {@link LinkExtractorParser}
- * It is advised to make subclasses reusable accross parsing, so {@link BaseParser}{@link #isReusable()} returns true by default
+ * It is advised to make subclasses reusable across parsing, so {@link BaseParser}{@link #isReusable()} returns true by default
  * @since 3.0
  */
 public abstract class BaseParser implements LinkExtractorParser {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger LOG = LoggerFactory.getLogger(BaseParser.class);
     // Cache of parsers - parsers must be re-usable
-    private static final Map<String, LinkExtractorParser> parsers = new ConcurrentHashMap<>(5);
+    private static final ConcurrentMap<String, LinkExtractorParser> PARSERS = new ConcurrentHashMap<>(5);
 
     /**
-     * 
+     * Constructor for BaseParser
      */
     public BaseParser() {
     }
 
     /**
-     * Factory method of parsers
+     * Factory method of parsers. Instances might get cached, when
+     * {@link LinkExtractorParser#isReusable()} on the newly created instance
+     * equals {@code true}.
+     * 
      * @param parserClassName
-     * @return {@link LinkExtractorParser}
+     *            name of the class that should be used to create new parsers
+     * @return a possibly cached instance of the wanted
+     *         {@link LinkExtractorParser}
      * @throws LinkExtractorParseException
+     *             when a new instance could not be instantiated
      */
     public static LinkExtractorParser getParser(String parserClassName) 
             throws LinkExtractorParseException {
 
         // Is there a cached parser?
-        LinkExtractorParser parser = parsers.get(parserClassName);
+        LinkExtractorParser parser = PARSERS.get(parserClassName);
         if (parser != null) {
-            log.debug("Fetched " + parserClassName);
+            LOG.debug("Fetched {}", parserClassName);
             return parser;
         }
 
         try {
-            Object clazz = Class.forName(parserClassName).newInstance();
+            Object clazz = Class.forName(parserClassName).getDeclaredConstructor().newInstance();
             if (clazz instanceof LinkExtractorParser) {
                 parser = (LinkExtractorParser) clazz;
             } else {
                 throw new LinkExtractorParseException(new ClassCastException(parserClassName));
             }
-        } catch (InstantiationException | ClassNotFoundException
-                | IllegalAccessException e) {
+        } catch (IllegalArgumentException | ReflectiveOperationException | SecurityException e) {
             throw new LinkExtractorParseException(e);
         }
-        log.info("Created " + parserClassName);
+        LOG.info("Created {}", parserClassName);
         if (parser.isReusable()) {
-            parsers.put(parserClassName, parser);// cache the parser
+            LinkExtractorParser currentParser = PARSERS.putIfAbsent(
+                    parserClassName, parser);// cache the parser if not already
+                                             // done by another thread
+            if (currentParser != null) {
+                return currentParser;
+            }
         }
 
         return parser;
@@ -79,7 +89,7 @@ public abstract class BaseParser implements LinkExtractorParser {
      * Parsers should over-ride this method if the parser class is re-usable, in
      * which case the class will be cached for the next getParser() call.
      *
-     * @return true if the Parser is reusable
+     * @return {@code true} if the Parser is reusable
      */
     @Override
     public boolean isReusable() {

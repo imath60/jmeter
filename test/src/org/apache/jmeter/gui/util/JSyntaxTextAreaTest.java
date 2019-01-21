@@ -37,6 +37,7 @@ public class JSyntaxTextAreaTest extends JMeterTestCase {
     @Test
     public void testSetLanguage() {
         try {
+            @SuppressWarnings("deprecation") // test code
             JSyntaxTextArea textArea = new JSyntaxTextArea(30, 50, false);
             textArea.setLanguage(null);
             assertEquals(SyntaxConstants.SYNTAX_STYLE_NONE, textArea.getSyntaxEditingStyle());
@@ -64,17 +65,5 @@ public class JSyntaxTextAreaTest extends JMeterTestCase {
                 fail("Invalid property value: " + s);
             }
         }
-        // Show unused entries
-//        for (Object s : languageProperties.values()) {
-//            values.remove(s);
-//        }
-//        if (values.size() > 0) {
-//            System.out.print("Unused JSyntaxAreaTypes:");
-//            for (String value : values) {
-//                System.out.print(" ");
-//                System.out.print(value);
-//            }
-//            System.out.println();
-//        }
     }
 }

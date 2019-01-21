@@ -23,19 +23,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.jmeter.assertions.AssertionResult;
 import org.apache.jmeter.samplers.SampleEvent;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.samplers.SampleSaveConfiguration;
 import org.apache.jmeter.save.SaveService;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.Converter;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.thoughtworks.xstream.converters.MarshallingContext;
 import com.thoughtworks.xstream.converters.UnmarshallingContext;
@@ -48,7 +46,7 @@ import com.thoughtworks.xstream.mapper.Mapper;
  * XStream Converter for the SampleResult class
  */
 public class SampleResultConverter extends AbstractCollectionConverter {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(SampleResultConverter.class);
 
     private static final String JAVA_LANG_STRING = "java.lang.String"; //$NON-NLS-1$
     private static final String ATT_CLASS = "class"; //$NON-NLS-1$
@@ -60,8 +58,6 @@ public class SampleResultConverter extends AbstractCollectionConverter {
     protected static final String TAG_REDIRECT_LOCATION = "redirectLocation"; //$NON-NLS-1$
     protected static final String TAG_REQUEST_HEADER    = "requestHeader";    //$NON-NLS-1$
 
-    //NOT USED protected   static final String TAG_URL               = "requestUrl";       //$NON-NLS-1$
-
     protected static final String TAG_RESPONSE_DATA     = "responseData";     //$NON-NLS-1$
     protected static final String TAG_RESPONSE_HEADER   = "responseHeader";   //$NON-NLS-1$
     protected static final String TAG_SAMPLER_DATA      = "samplerData";      //$NON-NLS-1$
@@ -70,6 +66,7 @@ public class SampleResultConverter extends AbstractCollectionConverter {
     // samplerData attributes. Must be unique. Keep sorted by string value.
     // Ensure the Listener documentation is updated when new attributes are added
     private static final String ATT_BYTES             = "by"; //$NON-NLS-1$
+    private static final String ATT_SENT_BYTES        = "sby"; //$NON-NLS-1$
     private static final String ATT_DATA_ENCODING     = "de"; //$NON-NLS-1$
     private static final String ATT_DATA_TYPE         = "dt"; //$NON-NLS-1$
     private static final String ATT_ERROR_COUNT       = "ec"; //$NON-NLS-1$
@@ -321,7 +318,10 @@ public class SampleResultConverter extends AbstractCollectionConverter {
             writer.addAttribute(ATT_DATA_ENCODING, ConversionHelp.encode(res.getDataEncodingNoDefault()));
         }
         if (save.saveBytes()) {
-            writer.addAttribute(ATT_BYTES, String.valueOf(res.getBytes()));
+            writer.addAttribute(ATT_BYTES, String.valueOf(res.getBytesAsLong()));
+        }
+        if (save.saveSentBytes()) {
+            writer.addAttribute(ATT_SENT_BYTES, String.valueOf(res.getSentBytes()));
         }
         if (save.saveSampleCount()){
             writer.addAttribute(ATT_SAMPLE_COUNT, String.valueOf(res.getSampleCount()));
@@ -343,7 +343,7 @@ public class SampleResultConverter extends AbstractCollectionConverter {
     }
 
     /**
-     * Write a tag with with a content of <code>value</code> to the
+     * Write a tag with a content of <code>value</code> to the
      * <code>writer</code>
      * 
      * @param writer
@@ -409,7 +409,7 @@ public class SampleResultConverter extends AbstractCollectionConverter {
                 try {
                     res.setResponseData(responseData.getBytes(dataEncoding));
                 } catch (UnsupportedEncodingException e) {
-                    res.setResponseData(("Can't support the char set: " + dataEncoding), null);
+                    res.setResponseData("Can't support the char set: " + dataEncoding, null);
                     res.setDataType(SampleResult.TEXT);
                 }
             }
@@ -447,7 +447,8 @@ public class SampleResultConverter extends AbstractCollectionConverter {
         res.setIdleTime(Converter.getLong(reader.getAttribute(ATT_IDLETIME)));
         res.setLatency(Converter.getLong(reader.getAttribute(ATT_LATENCY)));
         res.setConnectTime(Converter.getLong(reader.getAttribute(ATT_CONNECT_TIME)));
-        res.setBytes(Converter.getInt(reader.getAttribute(ATT_BYTES)));
+        res.setBytes(Converter.getLong(reader.getAttribute(ATT_BYTES)));
+        res.setSentBytes(Converter.getLong(reader.getAttribute(ATT_SENT_BYTES)));
         res.setSampleCount(Converter.getInt(reader.getAttribute(ATT_SAMPLE_COUNT),1)); // default is 1
         res.setErrorCount(Converter.getInt(reader.getAttribute(ATT_ERROR_COUNT),0)); // default is 0
         res.setGroupThreads(Converter.getInt(reader.getAttribute(ATT_GRP_THRDS)));
@@ -455,26 +456,21 @@ public class SampleResultConverter extends AbstractCollectionConverter {
     }
 
     protected void readFile(String resultFileName, SampleResult res) {
-        File in = null;
-        InputStream fis = null;
-        try {
-            in = new File(resultFileName);
-            fis = new BufferedInputStream(new FileInputStream(in));
-            ByteArrayOutputStream outstream = new ByteArrayOutputStream(res.getBytes());
+        File in = new File(resultFileName);
+        try (FileInputStream fis = new FileInputStream(in);
+                BufferedInputStream bis = new BufferedInputStream(fis)){
+            ByteArrayOutputStream outstream = new ByteArrayOutputStream(4096);
             byte[] buffer = new byte[4096];
             int len;
-            while ((len = fis.read(buffer)) > 0) {
+            while ((len = bis.read(buffer)) > 0) {
                 outstream.write(buffer, 0, len);
             }
             outstream.close();
             res.setResponseData(outstream.toByteArray());
         } catch (IOException e) {
-            log.warn(e.getLocalizedMessage());
-        } finally {
-            IOUtils.closeQuietly(fis);
-        }
+            log.warn("Failed to read result file.", e);
+        } 
     }
-
 
     /**
      * @param arg0 the mapper

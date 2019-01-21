@@ -22,8 +22,8 @@ import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.testelement.property.TestElementProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.thoughtworks.xstream.converters.MarshallingContext;
 import com.thoughtworks.xstream.converters.UnmarshallingContext;
@@ -33,7 +33,7 @@ import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 import com.thoughtworks.xstream.mapper.Mapper;
 
 public class TestElementPropertyConverter extends AbstractCollectionConverter {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(TestElementPropertyConverter.class);
 
     private static final String HEADER_CLASSNAME
         = "org.apache.jmeter.protocol.http.control.Header"; // $NON-NLS-1$
@@ -101,7 +101,7 @@ public class TestElementPropertyConverter extends AbstractCollectionConverter {
             prop.setName(ConversionHelp.decode(reader.getAttribute(ConversionHelp.ATT_NAME)));
             String element = reader.getAttribute(ConversionHelp.ATT_ELEMENT_TYPE);
             boolean isHeader = HEADER_CLASSNAME.equals(element);
-            prop.setObjectValue(mapper().realClass(element).newInstance());// Always decode
+            prop.setObjectValue(mapper().realClass(element).getDeclaredConstructor().newInstance());// Always decode
             TestElement te = (TestElement)prop.getObjectValue();
             // No need to check version, just process the attributes if present
             ConversionHelp.restoreSpecialProperties(te, reader);
@@ -122,7 +122,7 @@ public class TestElementPropertyConverter extends AbstractCollectionConverter {
                 reader.moveUp();
             }
             return prop;
-        } catch (InstantiationException | IllegalAccessException e) {
+        } catch (IllegalArgumentException | ReflectiveOperationException | SecurityException e) {
             log.error("Couldn't unmarshall TestElementProperty", e);
             return new TestElementProperty("ERROR", new ConfigTestElement());// $NON-NLS-1$
         }

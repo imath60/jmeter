@@ -30,10 +30,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * TCPClient implementation.
@@ -45,15 +46,15 @@ import org.apache.log.Logger;
  * Input data is assumed to be in hex, and is converted to binary
  */
 public class BinaryTCPClientImpl extends AbstractTCPClient {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(BinaryTCPClientImpl.class);
 
-    private static final int eomInt = JMeterUtils.getPropDefault("tcp.BinaryTCPClient.eomByte", 1000); // $NON_NLS-1$
+    private static final int EOM_INT = JMeterUtils.getPropDefault("tcp.BinaryTCPClient.eomByte", 1000); // $NON_NLS-1$
 
     public BinaryTCPClientImpl() {
         super();
-        setEolByte(eomInt);
+        setEolByte(EOM_INT);
         if (useEolByte) {
-            log.info("Using eomByte=" + eolByte);
+            log.info("Using eomByte={}", eolByte);
         }
     }
 
@@ -76,7 +77,7 @@ public class BinaryTCPClientImpl extends AbstractTCPClient {
                     throw new IllegalArgumentException(
                     "Hex-encoded binary string contains an invalid hex digit in '"+sc[i * 2]+sc[i * 2 + 1]+"'");
                 }
-                ba[i] = (byte) ((nibble0 << 4) | (nibble1));
+                ba[i] = (byte) ((nibble0 << 4) | nibble1);
             }
 
             return ba;
@@ -108,6 +109,12 @@ public class BinaryTCPClientImpl extends AbstractTCPClient {
         throw new UnsupportedOperationException(
                 "Method not supported for Length-Prefixed data.");
     }
+    
+    @Deprecated
+    public String read(InputStream is) throws ReadException {
+        log.warn("Deprecated method, use read(is, sampleResult) instead");
+        return read(is, new SampleResult());
+    }
 
     /**
      * Reads data until the defined EOM byte is reached.
@@ -118,12 +125,17 @@ public class BinaryTCPClientImpl extends AbstractTCPClient {
      * @throws ReadException when reading fails
      */
     @Override
-    public String read(InputStream is) throws ReadException {
+    public String read(InputStream is, SampleResult sampleResult) throws ReadException {
         ByteArrayOutputStream w = new ByteArrayOutputStream();
         try {
             byte[] buffer = new byte[4096];
             int x = 0;
+            boolean first = true;
             while ((x = is.read(buffer)) > -1) {
+                if (first) {
+                    sampleResult.latencyEnd();
+                    first = false;
+                }
                 w.write(buffer, 0, x);
                 if (useEolByte && (buffer[x - 1] == eolByte)) {
                     break;

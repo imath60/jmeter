@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.apache.jmeter.processor.PostProcessor;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.testelement.AbstractScopedTestElement;
@@ -32,8 +32,6 @@ import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterVariables;
 import org.apache.jmeter.util.Document;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
 import org.apache.oro.text.MalformedCachePatternException;
 import org.apache.oro.text.regex.MatchResult;
 import org.apache.oro.text.regex.Pattern;
@@ -41,14 +39,16 @@ import org.apache.oro.text.regex.PatternMatcher;
 import org.apache.oro.text.regex.PatternMatcherInput;
 import org.apache.oro.text.regex.Perl5Compiler;
 import org.apache.oro.text.regex.Perl5Matcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // @see org.apache.jmeter.extractor.TestRegexExtractor for unit tests
 
 public class RegexExtractor extends AbstractScopedTestElement implements PostProcessor, Serializable {
 
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 242L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RegexExtractor.class);
 
     // What to match against. N.B. do not change the string value or test plans will break!
     private static final String MATCH_AGAINST = "RegexExtractor.useHeaders"; // $NON-NLS-1$
@@ -86,6 +86,8 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
     private static final String REF_MATCH_NR = "_matchNr"; // $NON-NLS-1$
 
     private static final String UNDERSCORE = "_";  // $NON-NLS-1$
+
+    private static final boolean DEFAULT_VALUE_FOR_DEFAULT_EMPTY_VALUE = false;
 
     private transient List<Object> template;
 
@@ -127,8 +129,8 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 vars.remove(refName + REF_MATCH_NR);// ensure old value is not left defined
                 try {
                     prevCount = Integer.parseInt(prevString);
-                } catch (NumberFormatException e1) {
-                    log.warn("Could not parse "+prevString+" "+e1);
+                } catch (NumberFormatException nfe) {
+                    log.warn("Could not parse number: '{}'", prevString);
                 }
             }
             int matchCount=0;// Number of refName_n variable sets to keep
@@ -151,7 +153,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                     for (int i = 1; i <= matchCount; i++) {
                         match = getCorrectMatch(matches, i);
                         if (match != null) {
-                            final String refName_n = new StringBuilder(refName).append(UNDERSCORE).append(i).toString();
+                            final String refName_n = refName + UNDERSCORE + i;
                             vars.put(refName_n, generateResult(match));
                             saveGroups(vars, refName_n, match);
                         }
@@ -159,7 +161,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 }
                 // Remove any left-over variables
                 for (int i = matchCount + 1; i <= prevCount; i++) {
-                    final String refName_n = new StringBuilder(refName).append(UNDERSCORE).append(i).toString();
+                    final String refName_n = refName + UNDERSCORE + i;
                     vars.remove(refName_n);
                     removeGroups(vars, refName_n);
                 }
@@ -167,7 +169,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 log.warn("Error while generating result");
             }
         } catch (MalformedCachePatternException e) {
-            log.error("Error in pattern: " + regex);
+            log.error("Error in pattern: '{}'", regex);
         } finally {
             JMeterUtils.clearMatcherMemory(matcher, pattern);
         }
@@ -183,16 +185,12 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 : useBodyAsDocument() ? Document.getTextFromDocument(result.getResponseData())
                 : result.getResponseDataAsString() // Bug 36898
                 ;
-       if (log.isDebugEnabled()) {
-           log.debug("Input = " + inputString);
-       }
+       log.debug("Input = '{}'", inputString);
        return inputString;
     }
 
     private List<MatchResult> processMatches(Pattern pattern, String regex, SampleResult result, int matchNumber, JMeterVariables vars) {
-        if (log.isDebugEnabled()) {
-            log.debug("Regex = " + regex);
-        }
+        log.debug("Regex = '{}'", regex);
 
         Perl5Matcher matcher = JMeterUtils.getMatcher();
         List<MatchResult> matches = new ArrayList<>();
@@ -201,7 +199,10 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
         if (isScopeVariable()){
             String inputString=vars.get(getVariableName());
             if(inputString == null) {
-                log.warn("No variable '"+getVariableName()+"' found to process by RegexExtractor '"+getName()+"', skipping processing");
+                if (log.isWarnEnabled()) {
+                    log.warn("No variable '{}' found to process by RegexExtractor '{}', skipping processing",
+                            getVariableName(), getName());
+                }
                 return Collections.emptyList();
             }
             matchStrings(matchNumber, matcher, pattern, matches, found,
@@ -251,8 +252,8 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
         if (prevString!=null){
             try {
                 previous=Integer.parseInt(prevString);
-            } catch (NumberFormatException e) {
-                log.warn("Could not parse "+prevString+" "+e);
+            } catch (NumberFormatException nfe) {
+                log.warn("Could not parse number: '{}'.", prevString);
             }
         }
         //Note: match.groups() includes group 0
@@ -298,8 +299,8 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
     private String generateResult(MatchResult match) {
         StringBuilder result = new StringBuilder();
         for (Object obj : template) {
-            if (log.isDebugEnabled()) {
-                log.debug("RegexExtractor: Template piece " + obj + " (" + obj.getClass().getSimpleName() + ")");
+            if(log.isDebugEnabled()) {
+                log.debug("RegexExtractor: Template piece {} ({})", obj, obj.getClass());
             }
             if (obj instanceof Integer) {
                 result.append(match.group(((Integer) obj).intValue()));
@@ -307,9 +308,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 result.append(obj);
             }
         }
-        if (log.isDebugEnabled()) {
-            log.debug("Regex Extractor result = " + result.toString());
-        }
+        log.debug("Regex Extractor result = '{}'", result);
         return result.toString();
     }
 
@@ -325,8 +324,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
                 , Perl5Compiler.READ_ONLY_MASK
                 & Perl5Compiler.SINGLELINE_MASK);
         if (log.isDebugEnabled()) {
-            log.debug("Pattern = " + templatePattern.getPattern());
-            log.debug("template = " + rawTemplate);
+            log.debug("Pattern = '{}', template = '{}'", templatePattern.getPattern(), rawTemplate);
         }
         int beginOffset = 0;
         MatchResult currentResult;
@@ -344,10 +342,11 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
         if (beginOffset < rawTemplate.length()) { // trailing string is not empty
             combined.add(rawTemplate.substring(beginOffset, rawTemplate.length()));
         }
-        if (log.isDebugEnabled()){
-            log.debug("Template item count: "+combined.size());
-            for(Object o : combined){
-                log.debug(o.getClass().getSimpleName()+" '"+o.toString()+"'");
+        if (log.isDebugEnabled()) {
+            log.debug("Template item count: {}", combined.size());
+            int i = 0;
+            for (Object o : combined) {
+                log.debug("Template item-{}: {} '{}'", i++, o.getClass(), o);
             }
         }
         template = combined;
@@ -449,7 +448,7 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
      * @param defaultEmptyValue The default value for the variable
      */
     public void setDefaultEmptyValue(boolean defaultEmptyValue) {
-        setProperty(DEFAULT_EMPTY_VALUE, defaultEmptyValue);
+        setProperty(DEFAULT_EMPTY_VALUE, defaultEmptyValue, DEFAULT_VALUE_FOR_DEFAULT_EMPTY_VALUE);
     }
 
     /**
@@ -464,9 +463,10 @@ public class RegexExtractor extends AbstractScopedTestElement implements PostPro
     
     /**
      * Do we set default value to "" value when if it's empty
+     * @return true if we should set default value to "" if variable cannot be extracted
      */
     public boolean isEmptyDefaultValue() {
-        return getPropertyAsBoolean(DEFAULT_EMPTY_VALUE);
+        return getPropertyAsBoolean(DEFAULT_EMPTY_VALUE, DEFAULT_VALUE_FOR_DEFAULT_EMPTY_VALUE);
     }
 
     public void setTemplate(String template) {

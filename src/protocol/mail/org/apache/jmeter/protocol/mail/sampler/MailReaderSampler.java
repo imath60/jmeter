@@ -54,14 +54,15 @@ import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.property.BooleanProperty;
 import org.apache.jmeter.testelement.property.IntegerProperty;
 import org.apache.jmeter.testelement.property.StringProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.util.JMeterUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sampler that can read from POP3 and IMAP mail servers
  */
 public class MailReaderSampler extends AbstractSampler implements Interruptible {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(MailReaderSampler.class);
 
     private static final long serialVersionUID = 240L;
 
@@ -73,7 +74,7 @@ public class MailReaderSampler extends AbstractSampler implements Interruptible 
     private static final String SERVER = "host"; // $NON-NLS-1$
     private static final String PORT = "port"; // $NON-NLS-1$
     private static final String USERNAME = "username"; // $NON-NLS-1$
-    private static final String PASSWORD = "password"; // $NON-NLS-1$
+    private static final String PASSWORD = "password"; // $NON-NLS-1$ NOSONAR not a hardcoded password
     private static final String FOLDER = "folder"; // $NON-NLS-1$
     private static final String DELETE = "delete"; // $NON-NLS-1$
     private static final String NUM_MESSAGES = "num_messages"; // $NON-NLS-1$
@@ -180,9 +181,14 @@ public class MailReaderSampler extends AbstractSampler implements Interruptible 
                     log.info("load local truststore -Failed to load truststore from: "+truststore.getAbsolutePath());
                     truststore = new File(FileServer.getFileServer().getBaseDir(), getTrustStoreToUse());
                     log.info("load local truststore -Attempting to read truststore from:  "+truststore.getAbsolutePath());
-                    if(!truststore.exists()){
-                        log.info("load local truststore -Failed to load truststore from: "+truststore.getAbsolutePath() + ". Local truststore not available, aborting execution.");
-                        throw new IOException("Local truststore file not found. Also not available under : " + truststore.getAbsolutePath());
+                    if (!truststore.exists()){
+                        log.info(
+                                "load local truststore -Failed to load truststore from: "
+                                        + truststore.getAbsolutePath()
+                                        + ". Local truststore not available, aborting execution.");
+                        throw new IOException(
+                                "Local truststore file not found. Also not available under : "
+                                        + truststore.getAbsolutePath());
                     }
                 }
                 if (isUseSSL()) {
@@ -197,6 +203,7 @@ public class MailReaderSampler extends AbstractSampler implements Interruptible 
                     props.put(mailProp(serverProtocol, "ssl.socketFactory.fallback"), FALSE);  // $NON-NLS-1$
                 }
             }
+            addCustomProperties(props);
 
             // Get session
             Session session = Session.getInstance(props, null);
@@ -306,6 +313,19 @@ public class MailReaderSampler extends AbstractSampler implements Interruptible 
         }
         parent.setSuccessful(isOK);
         return parent;
+    }
+
+    protected void addCustomProperties(Properties props) {
+        Properties jMeterProperties = JMeterUtils.getJMeterProperties();
+        @SuppressWarnings("unchecked")
+        Enumeration<String> enums = (Enumeration<String>) jMeterProperties.propertyNames();
+        while (enums.hasMoreElements()) {
+            String key = enums.nextElement();
+            if (key.startsWith("mail.")) {
+                String value = jMeterProperties.getProperty(key);
+                props.put(key, value);
+            }
+        }
     }
 
     private void appendMessageData(SampleResult child, Message message)

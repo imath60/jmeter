@@ -20,14 +20,13 @@ package org.apache.jmeter.sampler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.jmeter.config.ConfigTestElement;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.samplers.AbstractSampler;
 import org.apache.jmeter.samplers.Entry;
 import org.apache.jmeter.samplers.SampleResult;
@@ -38,8 +37,8 @@ import org.apache.jmeter.util.JMeterUtils;
 
 /**
  * The Debug Sampler can be used to "sample" JMeter variables, JMeter properties and System Properties.
- *
  */
+@GUIMenuSortOrder(2)
 public class DebugSampler extends AbstractSampler implements TestBean {
 
     private static final long serialVersionUID = 232L;
@@ -48,9 +47,7 @@ public class DebugSampler extends AbstractSampler implements TestBean {
             Arrays.asList("org.apache.jmeter.config.gui.SimpleConfigGui"));
 
     private boolean displayJMeterVariables;
-
     private boolean displayJMeterProperties;
-
     private boolean displaySystemProperties;
 
     @Override
@@ -92,21 +89,12 @@ public class DebugSampler extends AbstractSampler implements TestBean {
     private void formatSet(StringBuilder sb, @SuppressWarnings("rawtypes") Set s) {
         @SuppressWarnings("unchecked")
         List<Map.Entry<Object, Object>> al = new ArrayList<>(s);
-        Collections.sort(al, new Comparator<Map.Entry<Object, Object>>(){
-            @Override
-            public int compare(Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) {
-                String m1,m2;
-                m1=(String)o1.getKey();
-                m2=(String)o2.getKey();
+        al.sort((Map.Entry<Object, Object> o1, Map.Entry<Object, Object> o2) -> {
+                String m1 = (String)o1.getKey();
+                String m2 = (String)o2.getKey();
                 return m1.compareTo(m2);
-            }
         });
-        for(Map.Entry<Object, Object> me : al){
-            sb.append(me.getKey());
-            sb.append("=");
-            sb.append(me.getValue());
-            sb.append("\n");
-        }
+        al.forEach(me -> sb.append(me.getKey()).append("=").append(me.getValue()).append("\n"));
     }
 
     public boolean isDisplayJMeterVariables() {

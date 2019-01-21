@@ -44,9 +44,6 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
-import junit.framework.Test;
-import junit.framework.TestSuite;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.config.gui.ObsoleteGui;
 import org.apache.jmeter.gui.JMeterGUIComponent;
@@ -57,18 +54,21 @@ import org.apache.jmeter.testbeans.TestBean;
 import org.apache.jmeter.testbeans.gui.TestBeanGUI;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.ClassFinder;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
-public class JMeterTest extends JMeterTestCaseJUnit3 {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+import junit.framework.Test;
+import junit.framework.TestSuite;
+
+public class JMeterTest extends JMeterTestCaseJUnit {
+    private static final Logger log = LoggerFactory.getLogger(JMeterTest.class);
 
     private static Map<String, Boolean> guiTitles;
 
@@ -151,7 +151,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
         guiTitles = new HashMap<>(90);
 
         String compref = "../xdocs/usermanual/component_reference.xml";
-        try (InputStream stream = new FileInputStream(compref)) {
+        try (InputStream stream = new FileInputStream(findTestFile(compref))) {
             org.w3c.dom.Element body = getBodyFromXMLDocument(stream);
             NodeList sections = body.getElementsByTagName("section");
             for (int i = 0; i < sections.getLength(); i++) {
@@ -179,7 +179,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
      * @throws FileNotFoundException 
      */
     private Element getBodyFromXMLDocument(InputStream stream)
-            throws ParserConfigurationException, FileNotFoundException, SAXException, IOException {
+            throws ParserConfigurationException, SAXException, IOException {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setIgnoringElementContentWhitespace(true);
         dbf.setIgnoringComments(true);
@@ -197,7 +197,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
         guiTags = new HashMap<>(90);
 
         String compref = "../xdocs/usermanual/component_reference.xml";
-        try (InputStream stream = new FileInputStream(compref)) {
+        try (InputStream stream = new FileInputStream(findTestFile(compref))) {
             org.w3c.dom.Element body = getBodyFromXMLDocument(stream);
             NodeList sections = body.getElementsByTagName("section");
             
@@ -240,10 +240,12 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
     public void checkGuiSet() throws Exception {
         guiTitles.remove("Example Sampler");// We don't mind if this is left over
         guiTitles.remove("Sample_Result_Save_Configuration");// Ditto, not a sampler
-        assertEquals("Should not have any names left over, check name of components in EN (default) Locale, which must match name attribute of component", 0, scanprintMap(guiTitles, "GUI"));
+        assertEquals(
+                "Should not have any names left over, check name of components in EN (default) Locale, "
+                + "which must match name attribute of component, check java.awt.HeadlessException errors before, we are running with '-Djava.awt.headless="
+                + System.getProperty("java.awt.headless")+"'",
+                0, scanprintMap(guiTitles, "GUI"));
     }
-
-    
 
     /*
      * Test GUI elements - create the suite of tests
@@ -306,11 +308,12 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
             }
             String name = guiItem.getClass().getName();
             if (// Is this a work in progress or an internal GUI component?
-                (title != null && title.length() > 0) // Will be "" for internal components
-                && (!title.toUpperCase(Locale.ENGLISH).contains("(ALPHA"))
-                && (!title.toUpperCase(Locale.ENGLISH).contains("(BETA"))
-                && (!title.matches("Example\\d+")) // Skip the example samplers ...
-                && (!name.startsWith("org.apache.jmeter.examples."))) 
+                title != null && title.length() > 0 // Will be "" for internal components
+                && !title.toUpperCase(Locale.ENGLISH).contains("(ALPHA")
+                && !title.toUpperCase(Locale.ENGLISH).contains("(BETA")
+                && !title.toUpperCase(Locale.ENGLISH).contains("(DEPRECATED")
+                && !title.matches("Example\\d+") // Skip the example samplers ...
+                && !name.startsWith("org.apache.jmeter.examples.")) 
             {// No, not a work in progress ...
                 String s = "component_reference.xml needs '" + title + "' anchor for " + name;
                 if (!ct) {
@@ -339,7 +342,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
                 assertFalse("'" + label + "' should be in resource file for " + name, JMeterUtils.getResString(
                         label).startsWith(JMeterUtils.RES_KEY_PFX));
             } catch (UnsupportedOperationException uoe) {
-                log.warn("Class has not yet implemented getLabelResource " + name);
+                log.warn("Class has not yet implemented getLabelResource {}", name);
             }
         }
         checkElementAlias(guiItem);
@@ -366,7 +369,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
         if (!(guiItem instanceof UnsharedComponent)) {
             assertEquals("SHARED: Failed on " + name, "", el2.getPropertyAsString("NOT"));
         }
-        log.debug("Saving element: " + el.getClass());
+        log.debug("Saving element: {}", el.getClass());
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         SaveService.saveElement(el, bos);
         ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
@@ -448,43 +451,7 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
                 if (n.endsWith("RemoteJMeterEngineImpl")) {
                     continue; // Don't try to instantiate remote server
                 }
-                Class<?> c = null;
-                try {
-                    c = Class.forName(n);
-                    try {
-                        // Try with a parameter-less constructor first
-                        objects.add(c.newInstance());
-                    } catch (InstantiationException e) {
-                        caught = e;
-                        try {
-                            // Events often have this constructor
-                            objects.add(c.getConstructor(new Class[] { Object.class }).newInstance(
-                                    new Object[] { myThis }));
-                        } catch (NoSuchMethodException f) {
-                            // no luck. Ignore this class
-                            System.out.println("o.a.j.junit.JMeterTest WARN: " + exName + ": NoSuchMethodException  " + n + ", missing empty Constructor or Constructor with Object parameter");
-                        }
-                    }
-                } catch (NoClassDefFoundError e) {
-                    // no luck. Ignore this class
-                    System.out.println("o.a.j.junit.JMeterTest WARN: " + exName + ": NoClassDefFoundError " + n + ":" + e.getMessage());
-                    e.printStackTrace(System.out);
-                } catch (IllegalAccessException e) {
-                    caught = e;
-                    System.out.println("o.a.j.junit.JMeterTest WARN: " + exName + ": IllegalAccessException " + n + ":" + e.getMessage());
-                    e.printStackTrace(System.out);
-                    // We won't test restricted-access classes.
-                } catch (HeadlessException|ExceptionInInitializerError e) {// EIIE can be caused by Headless
-                    caught = e;
-                    System.out.println("o.a.j.junit.JMeterTest Error creating "+n+" "+e.toString());
-                } catch (Exception e) {
-                    caught = e;
-                    if (e instanceof RemoteException) { // not thrown, so need to check here
-                        System.out.println("o.a.j.junit.JMeterTest WARN: " + "Error creating " + n + " " + e.toString());
-                    } else {
-                        throw new Exception("Error creating " + n, e);
-                    }
-                }
+                caught = instantiateClass(exName, myThis, objects, n, caught);
             }
             caughtError = false;
         } finally {
@@ -498,14 +465,14 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
         if (objects.isEmpty()) {
             System.out.println("No classes found that extend " + exName + ". Check the following:");
             System.out.println("Search paths are:");
-            String ss[] = JMeterUtils.getSearchPaths();
+            String[] ss = JMeterUtils.getSearchPaths();
             for (String s : ss) {
                 System.out.println(s);
             }
             if (!classPathShown) {// Only dump it once
                 System.out.println("Class path is:");
                 String cp = System.getProperty("java.class.path");
-                String classPathElements[] = JOrphanUtils.split(cp, java.io.File.pathSeparator);
+                String[] classPathElements = JOrphanUtils.split(cp, java.io.File.pathSeparator);
                 for (String classPathElement : classPathElements) {
                     System.out.println(classPathElement);
                 }
@@ -513,6 +480,51 @@ public class JMeterTest extends JMeterTestCaseJUnit3 {
             }
         }
         return objects;
+    }
+
+    private static Throwable instantiateClass(final String extendsClassName, final Object myThis,
+            final List<Object> objects, final String className, final Throwable oldCaught) throws Exception {
+        Throwable caught = oldCaught;
+        try {
+            Class<?> c = Class.forName(className);
+            try {
+                // Try with a parameter-less constructor first
+                objects.add(c.newInstance());
+            } catch (InstantiationException e) {
+                caught = e;
+                try {
+                    // Events often have this constructor
+                    objects.add(c.getConstructor(new Class[] { Object.class }).newInstance(
+                            new Object[] { myThis }));
+                } catch (NoSuchMethodException f) {
+                    // no luck. Ignore this class
+                    if (!Enum.class.isAssignableFrom(c)) { // ignore enums
+                        System.out.println("o.a.j.junit.JMeterTest WARN: " + extendsClassName + ": NoSuchMethodException  " + 
+                            className + ", missing empty Constructor or Constructor with Object parameter");
+                    }
+                }
+            }
+        } catch (NoClassDefFoundError e) {
+            // no luck. Ignore this class
+            System.out.println("o.a.j.junit.JMeterTest WARN: " + extendsClassName + ": NoClassDefFoundError " + className + ":" + e.getMessage());
+            e.printStackTrace(System.out);
+        } catch (IllegalAccessException e) {
+            caught = e;
+            System.out.println("o.a.j.junit.JMeterTest WARN: " + extendsClassName + ": IllegalAccessException " + className + ":" + e.getMessage());
+            e.printStackTrace(System.out);
+            // We won't test restricted-access classes.
+        } catch (HeadlessException|ExceptionInInitializerError e) {// EIIE can be caused by Headless
+            caught = e;
+            System.out.println("o.a.j.junit.JMeterTest Error creating " + className + " " + e.toString());
+        } catch (Exception e) {
+            caught = e;
+            if (e instanceof RemoteException) { // not thrown, so need to check here
+                System.out.println("o.a.j.junit.JMeterTest WARN: " + "Error creating " + className + " " + e.toString());
+            } else {
+                throw new Exception("Error creating " + className, e);
+            }
+        }
+        return caught;
     }
     
 }

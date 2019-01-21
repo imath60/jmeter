@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import org.apache.jmeter.report.core.Sample;
 import org.apache.jmeter.report.core.SampleBuilder;
 import org.apache.jmeter.report.core.SampleMetadata;
-import org.apache.jmeter.report.processor.AbstractSampleConsumer;
 
 /**
  * The Class TimeCountConsumer adds a data field to the samples it consumes.
@@ -106,7 +105,6 @@ public class TaggerConsumer<TIndex> extends AbstractSampleConsumer {
 
     @Override
     public void startConsuming() {
-        // TODO what if sampleIndexer is null ?
         if (sampleIndexer != null) {
             sampleIndexer.reset();
         }
@@ -116,7 +114,6 @@ public class TaggerConsumer<TIndex> extends AbstractSampleConsumer {
 
     @Override
     public void consume(Sample sample, int channel) {
-        // TODO what if s or sampleIndexer are null ?
         if (sample != null && sampleIndexer != null) {
             TIndex index = sampleIndexer.calculateIndex(sample);
             Sample indexedSample = createIndexedSample(sample, channel, index);

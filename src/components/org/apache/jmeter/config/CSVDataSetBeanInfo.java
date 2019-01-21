@@ -21,7 +21,10 @@ package org.apache.jmeter.config;
 import java.beans.PropertyDescriptor;
 
 import org.apache.jmeter.testbeans.BeanInfoSupport;
+import org.apache.jmeter.testbeans.gui.FileEditor;
 import org.apache.jmeter.testbeans.gui.TypeEditor;
+import org.apache.jmeter.util.JMeterUtils;
+import org.apache.jorphan.util.JOrphanUtils;
 
 public class CSVDataSetBeanInfo extends BeanInfoSupport {
 
@@ -29,6 +32,7 @@ public class CSVDataSetBeanInfo extends BeanInfoSupport {
     private static final String FILENAME = "filename";               //$NON-NLS-1$
     private static final String FILE_ENCODING = "fileEncoding";      //$NON-NLS-1$
     private static final String VARIABLE_NAMES = "variableNames";    //$NON-NLS-1$
+    private static final String IGNORE_FIRST_LINE = "ignoreFirstLine";    //$NON-NLS-1$
     private static final String DELIMITER = "delimiter";             //$NON-NLS-1$
     private static final String RECYCLE = "recycle";                 //$NON-NLS-1$
     private static final String STOPTHREAD = "stopThread";           //$NON-NLS-1$
@@ -36,7 +40,7 @@ public class CSVDataSetBeanInfo extends BeanInfoSupport {
     private static final String SHAREMODE = "shareMode";             //$NON-NLS-1$
 
     // Access needed from CSVDataSet
-    static final String[] SHARE_TAGS = new String[3];
+    private static final String[] SHARE_TAGS = new String[3];
     static final int SHARE_ALL    = 0;
     static final int SHARE_GROUP  = 1;
     static final int SHARE_THREAD = 2;
@@ -52,22 +56,29 @@ public class CSVDataSetBeanInfo extends BeanInfoSupport {
         super(CSVDataSet.class);
 
         createPropertyGroup("csv_data",             //$NON-NLS-1$
-                new String[] { FILENAME, FILE_ENCODING, VARIABLE_NAMES, DELIMITER, QUOTED_DATA, RECYCLE, STOPTHREAD, SHAREMODE });
+                new String[] { FILENAME, FILE_ENCODING, VARIABLE_NAMES, 
+                        IGNORE_FIRST_LINE, DELIMITER, QUOTED_DATA, 
+                        RECYCLE, STOPTHREAD, SHAREMODE });
 
         PropertyDescriptor p = property(FILENAME);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");        //$NON-NLS-1$
         p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+        p.setPropertyEditorClass(FileEditor.class);
 
-        p = property(FILE_ENCODING);
+        p = property(FILE_ENCODING, TypeEditor.ComboStringEditor);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");        //$NON-NLS-1$
-        p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+        p.setValue(TAGS, getListFileEncoding());
 
         p = property(VARIABLE_NAMES);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");        //$NON-NLS-1$
         p.setValue(NOT_EXPRESSION, Boolean.TRUE);
+
+        p = property(IGNORE_FIRST_LINE);
+        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+        p.setValue(DEFAULT, Boolean.FALSE);
 
         p = property(DELIMITER);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
@@ -105,5 +116,23 @@ public class CSVDataSetBeanInfo extends BeanInfoSupport {
             }
         }
         return -1;
+    }
+
+    /**
+     * @return array of String for possible sharing modes
+     */
+    public static String[] getShareTags() {
+        String[] copy = new String[SHARE_TAGS.length];
+        System.arraycopy(SHARE_TAGS, 0, copy, 0, SHARE_TAGS.length);
+        return copy;
+    }
+
+    /**
+     * Get the mains file encoding
+     * list from https://docs.oracle.com/javase/8/docs/technotes/guides/intl/encoding.doc.html
+     * @return a String[] with the list of file encoding
+     */
+    private String[] getListFileEncoding() {
+        return JOrphanUtils.split(JMeterUtils.getPropDefault("csvdataset.file.encoding_list", ""), "|"); //$NON-NLS-1$
     }
 }

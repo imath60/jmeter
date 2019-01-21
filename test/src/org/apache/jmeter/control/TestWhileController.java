@@ -36,11 +36,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class TestWhileController extends JMeterTestCase {
-//      static {
-//           LoggingManager.setPriority("DEBUG","jmeter");
-//           LoggingManager.setTarget(new java.io.PrintWriter(System.out));
-//      }
-
 
         private JMeterContext jmctx;
         private JMeterVariables jmvars;
@@ -75,14 +70,12 @@ public class TestWhileController extends JMeterTestCase {
         // While (blank), previous sample OK - should loop until false
         @Test
         public void testBlankPrevOK() throws Exception {
-//          log.info("testBlankPrevOK");
             runtestPrevOK("");
         }
 
         // While (LAST), previous sample OK - should loop until false
         @Test
         public void testLastPrevOK() throws Exception {
-//          log.info("testLASTPrevOK");
             runtestPrevOK("LAST");
         }
 
@@ -91,7 +84,6 @@ public class TestWhileController extends JMeterTestCase {
         // While (LAST), previous sample OK - should loop until false
         @Test
         public void testOtherPrevOK() throws Exception {
-//          log.info("testOtherPrevOK");
             runtestPrevOK(OTHER);
         }
 
@@ -142,7 +134,6 @@ public class TestWhileController extends JMeterTestCase {
         // While (blank), previous sample failed - should run once
         @Test
         public void testBlankPrevFailed() throws Exception {
-//          log.info("testBlankPrevFailed");
             GenericController controller = new GenericController();
             controller.setRunningVersion(true);
             WhileController while_cont = new WhileController();
@@ -280,14 +271,12 @@ public class TestWhileController extends JMeterTestCase {
         // While LAST, previous sample failed - should not run
         @Test
         public void testLASTPrevFailed() throws Exception {
-//          log.info("testLastPrevFailed");
             runTestPrevFailed("LAST");
         }
 
         // While False, previous sample failed - should not run
         @Test
         public void testfalsePrevFailed() throws Exception {
-//          log.info("testFalsePrevFailed");
             runTestPrevFailed("False");
         }
 
@@ -373,7 +362,6 @@ public class TestWhileController extends JMeterTestCase {
                     assertNull(nextName(controller));
                 }
             } catch (StackOverflowError e) {
-                // e.printStackTrace();
                 fail(e.toString());
             }
         }

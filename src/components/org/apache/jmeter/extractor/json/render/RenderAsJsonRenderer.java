@@ -37,6 +37,8 @@ import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 
 import org.apache.jmeter.extractor.json.jsonpath.JSONManager;
+import org.apache.jmeter.gui.util.JSyntaxTextArea;
+import org.apache.jmeter.gui.util.JTextScrollPane;
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jmeter.visualizers.RenderAsJSON;
@@ -44,8 +46,9 @@ import org.apache.jmeter.visualizers.ResultRenderer;
 import org.apache.jmeter.visualizers.ViewResultsFullVisualizer;
 import org.apache.jorphan.gui.GuiUtils;
 import org.apache.jorphan.gui.JLabeledTextField;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -54,7 +57,7 @@ import org.apache.log.Logger;
  */
 public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
 
-    private static final Logger LOGGER = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RenderAsJsonRenderer.class);
 
     private static final String TAB_SEPARATOR = "    "; //$NON-NLS-1$
     
@@ -62,7 +65,7 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
 
     private JPanel jsonWithJSonPathPanel;
 
-    private JTextArea jsonDataField;
+    private JSyntaxTextArea jsonDataField;
 
     private JLabeledTextField jsonPathExpressionField;
 
@@ -119,14 +122,16 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
 
     private String process(String textToParse) {
         try {
-            List<String> matchStrings = extractWithJSonPath(textToParse, jsonPathExpressionField.getText());
-            if (matchStrings.size() == 0) {
+            List<Object> matchStrings = extractWithJSonPath(textToParse, jsonPathExpressionField.getText());
+            if (matchStrings.isEmpty()) {
                 return "NO MATCH"; //$NON-NLS-1$
             } else {
                 StringBuilder builder = new StringBuilder();
                 int i = 0;
-                for (String text : matchStrings) {
-                    builder.append("Result[").append(i++).append("]=").append(text).append("\n"); //$NON-NLS-1$ $NON-NLS-2$ $NON-NLS-3$
+                for (Object obj : matchStrings) {
+                    String objAsString =
+                            obj != null ? obj.toString() : ""; //$NON-NLS-1$
+                    builder.append("Result[").append(i++).append("]=").append(objAsString).append("\n"); //$NON-NLS-1$ $NON-NLS-2$ $NON-NLS-3$
                 }
 
                 return builder.toString();
@@ -136,7 +141,7 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
         }
     }
     
-    private List<String> extractWithJSonPath(String textToParse, String expression) throws ParseException {
+    private List<Object> extractWithJSonPath(String textToParse, String expression) throws ParseException {
         JSONManager jsonManager = new JSONManager();
         return jsonManager.extractWithJsonPath(textToParse, expression);
     }
@@ -151,7 +156,7 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
             jsonDataField.setText(response == null ? "" : RenderAsJSON.prettyJSON(response, TAB_SEPARATOR));  //$NON-NLS-1$
             jsonDataField.setCaretPosition(0);
         } catch (Exception e) {
-            LOGGER.error("Exception converting to XML: "+response+ ", message: "+e.getMessage(),e); //$NON-NLS-1$ $NON-NLS-2$
+            log.error("Exception converting to XML: {}, message: {}", response, e.getMessage(), e); //$NON-NLS-1$ $NON-NLS-2$
             jsonDataField.setText("Exception converting to XML: "+response+ ", message: "+e.getMessage()); //$NON-NLS-1$ $NON-NLS-2$
             jsonDataField.setCaretPosition(0);
         }
@@ -179,20 +184,25 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
      * @return JSON PATH Tester panel
      */
     private JPanel createJSonPathExtractorPanel() {
-        
-        jsonDataField = new JTextArea();
+        jsonDataField = JSyntaxTextArea.getInstance(50, 80, true);
+        jsonDataField.setCodeFoldingEnabled(true);
         jsonDataField.setEditable(false);
+        jsonDataField.setBracketMatchingEnabled(false);
+        jsonDataField.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_JSON);
+        jsonDataField.setLanguage(SyntaxConstants.SYNTAX_STYLE_JSON);
         jsonDataField.setLineWrap(true);
         jsonDataField.setWrapStyleWord(true);
+        
 
-        this.jsonDataPane = GuiUtils.makeScrollPane(jsonDataField);
-        jsonDataPane.setMinimumSize(new Dimension(0, 400));
+        this.jsonDataPane = JTextScrollPane.getInstance(jsonDataField, true);
+        jsonDataPane.setPreferredSize(new Dimension(100, 200));
 
         JPanel panel = new JPanel(new BorderLayout(0, 5));
 
         JSplitPane mainSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
                 jsonDataPane, createJSonPathExtractorTasksPanel());
-        mainSplit.setDividerLocation(400);
+        mainSplit.setDividerLocation(0.6d);
+        mainSplit.setOneTouchExpandable(true);
         panel.add(mainSplit, BorderLayout.CENTER);
         return panel;
     }
@@ -219,6 +229,7 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
         jsonPathResultField.setEditable(false);
         jsonPathResultField.setLineWrap(true);
         jsonPathResultField.setWrapStyleWord(true);
+        jsonPathResultField.setMinimumSize(new Dimension(100, 150));
 
         JPanel xpathTasksPanel = new JPanel(new BorderLayout(0, 5));
         xpathTasksPanel.add(jsonPathActionPanel, BorderLayout.NORTH);
@@ -257,6 +268,7 @@ public class RenderAsJsonRenderer implements ResultRenderer, ActionListener {
     /** {@inheritDoc} */
     @Override
     public void setBackgroundColor(Color backGround) {
+        // NOOP
     }
 
 }

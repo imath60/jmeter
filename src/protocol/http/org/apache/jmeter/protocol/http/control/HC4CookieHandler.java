@@ -48,16 +48,16 @@ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.protocol.http.util.HTTPConstants;
 import org.apache.jmeter.testelement.property.CollectionProperty;
 import org.apache.jmeter.testelement.property.JMeterProperty;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HC4CookieHandler implements CookieHandler {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HC4CookieHandler.class);
 
     // Needed by CookiePanel
-    public static String DEFAULT_POLICY_NAME = CookieSpecs.STANDARD; 
+    public static final String DEFAULT_POLICY_NAME = CookieSpecs.STANDARD; // NOSONAR 
 
-    public static final String[] AVAILABLE_POLICIES = new String[]{
+    private static final String[] AVAILABLE_POLICIES = new String[]{ 
         DEFAULT_POLICY_NAME,
         CookieSpecs.STANDARD_STRICT,
         CookieSpecs.IGNORE_COOKIES,
@@ -71,7 +71,7 @@ public class HC4CookieHandler implements CookieHandler {
 
     private final transient CookieSpec cookieSpec;
     
-    private static PublicSuffixMatcher publicSuffixMatcher = PublicSuffixMatcherLoader.getDefault();
+    private static final PublicSuffixMatcher publicSuffixMatcher = PublicSuffixMatcherLoader.getDefault();
     private static Registry<CookieSpecProvider> registry  = 
             RegistryBuilder.<CookieSpecProvider>create()
             // case is ignored bug registry as it converts to lowerCase(Locale.US)
@@ -87,9 +87,16 @@ public class HC4CookieHandler implements CookieHandler {
             .register(CookieSpecs.NETSCAPE, new NetscapeDraftSpecProvider())
             .build();
 
+    /**
+     * Default constructor that uses {@link HC4CookieHandler#DEFAULT_POLICY_NAME}
+     */
+    public HC4CookieHandler() {
+        this(DEFAULT_POLICY_NAME);
+    }
+    
     public HC4CookieHandler(String policy) {
         super();
-        if (policy.equals(org.apache.commons.httpclient.cookie.CookiePolicy.DEFAULT)) { // tweak diff HC3 vs HC4
+        if (policy.equalsIgnoreCase("default")) { // tweak diff HC3 vs HC4
             policy = CookieSpecs.DEFAULT;
         }
         HttpClientContext context = HttpClientContext.create();
@@ -101,7 +108,7 @@ public class HC4CookieHandler implements CookieHandler {
             boolean checkCookies, String cookieHeader, URL url) {
             boolean debugEnabled = log.isDebugEnabled();
             if (debugEnabled) {
-                log.debug("Received Cookie: " + cookieHeader + " From: " + url.toExternalForm());
+                log.debug("Received Cookie: {} From: {}", cookieHeader, url.toExternalForm());
             }
             String protocol = url.getProtocol();
             String host = url.getHost();
@@ -125,7 +132,13 @@ public class HC4CookieHandler implements CookieHandler {
             for (org.apache.http.cookie.Cookie cookie : cookies) {
                 try {
                     if (checkCookies) {
-                        cookieSpec.validate(cookie, cookieOrigin);
+                        try {
+                            cookieSpec.validate(cookie, cookieOrigin);
+                        } catch (MalformedCookieException e) { // This means the cookie was wrong for the URL
+                            log.info("Not storing invalid cookie: <{}> for URL {} ({})",
+                                cookieHeader, url, e.getLocalizedMessage());
+                            continue;
+                        }
                     }
                     Date expiryDate = cookie.getExpiryDate();
                     long exp = 0;
@@ -149,11 +162,9 @@ public class HC4CookieHandler implements CookieHandler {
                     } else {
                         cookieManager.removeMatchingCookies(newCookie);
                         if (debugEnabled){
-                            log.info("Dropping expired Cookie: "+newCookie.toString());
+                            log.info("Dropping expired Cookie: {}", newCookie);
                         }
                     }
-                } catch (MalformedCookieException e) { // This means the cookie was wrong for the URL
-                    log.warn("Not storing invalid cookie: <"+cookieHeader+"> for URL "+url+" ("+e.getLocalizedMessage()+")");
                 } catch (IllegalArgumentException e) {
                     log.warn(cookieHeader+e.getLocalizedMessage());
                 }
@@ -168,9 +179,9 @@ public class HC4CookieHandler implements CookieHandler {
         
         boolean debugEnabled = log.isDebugEnabled();
         if (debugEnabled){
-            log.debug("Found "+c.size()+" cookies for "+url.toExternalForm());
+            log.debug("Found {} cookies for {}", c.size(), url);
         }
-        if (c.size() <= 0) {
+        if (c.isEmpty()) {
             return null;
         }
         List<Header> lstHdr = cookieSpec.formatCookies(c);
@@ -249,5 +260,10 @@ public class HC4CookieHandler implements CookieHandler {
     @Override
     public String getDefaultPolicy() {
         return DEFAULT_POLICY_NAME; 
+    }
+
+    @Override
+    public String[] getPolicies() {
+        return AVAILABLE_POLICIES;
     }
 }

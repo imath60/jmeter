@@ -18,6 +18,8 @@
 package org.apache.jmeter.report.dashboard;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.jmeter.report.config.ConfigurationException;
+import org.apache.jmeter.report.config.SubConfiguration;
 import org.apache.jmeter.report.processor.MapResultData;
 import org.apache.jmeter.report.processor.ResultData;
 import org.apache.jmeter.report.processor.ValueResultData;
@@ -26,6 +28,7 @@ import org.apache.jmeter.report.processor.ValueResultData;
  * The Class AbstractDataExporter provides a base class for DataExporter.
  */
 public abstract class AbstractDataExporter implements DataExporter {
+    private static final String INVALID_PROPERTY_CONFIG_FMT = "Wrong property \"%s\" in \"%s\" export configuration";
 
     private String name;
 
@@ -45,11 +48,13 @@ public abstract class AbstractDataExporter implements DataExporter {
      *            the name of the data containing the value
      * @param root
      *            the root of the tree
+     * @param <T>
+     *            type of value to be found
      * @return the value matching the data name
      */
-    protected static <TValue> TValue findValue(Class<TValue> clazz, String data,
+    protected static <T> T findValue(Class<T> clazz, String data,
             ResultData root) {
-        TValue value = null;
+        T value = null;
         ResultData result = findData(data, root);
         if (result instanceof ValueResultData) {
             ValueResultData valueResult = (ValueResultData) result;
@@ -116,4 +121,14 @@ public abstract class AbstractDataExporter implements DataExporter {
         this.name = name;
     }
 
+    protected <TProperty> TProperty getPropertyFromConfig(SubConfiguration cfg,
+            String property, TProperty defaultValue, Class<TProperty> clazz)
+                    throws ExportException {
+        try {
+            return cfg.getProperty(property, defaultValue, clazz);
+        } catch (ConfigurationException ex) {
+            throw new ExportException(String.format(INVALID_PROPERTY_CONFIG_FMT,
+                    property, getName()), ex);
+        }
+    }
 }

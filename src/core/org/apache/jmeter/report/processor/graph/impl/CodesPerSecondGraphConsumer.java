@@ -29,8 +29,8 @@ import org.apache.jmeter.report.processor.graph.GroupInfo;
 import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
 
 /**
- * The class HitsPerSecondGraphConsumer provides a graph to visualize hits rate
- * per second.
+ * The class CodesPerSecondGraphConsumer provides a graph to visualize response codes rate
+ * per second 
  *
  * @since 3.0
  */
@@ -61,8 +61,18 @@ public class CodesPerSecondGraphConsumer extends AbstractOverTimeGraphConsumer {
         HashMap<String, GroupInfo> groupInfos = new HashMap<>(1);
         groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP, new GroupInfo(
                 new TimeRateAggregatorFactory(), new CodeSeriesSelector(),
-                new CountValueSelector(), false, false));
+                // We ignore Transaction Controller results
+                new CountValueSelector(true), false, false));
         return groupInfos;
+    }
+
+    @Override
+    public void initialize() {
+        super.initialize();
+        // Override the granularity of the aggregators factory
+        ((TimeRateAggregatorFactory) getGroupInfos().get(
+                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
+                .setGranularity(getGranularity());
     }
 
     /*
@@ -75,9 +85,5 @@ public class CodesPerSecondGraphConsumer extends AbstractOverTimeGraphConsumer {
     @Override
     public void setGranularity(long granularity) {
         super.setGranularity(granularity);
-        // Override the granularity of the aggregators factory
-        ((TimeRateAggregatorFactory) getGroupInfos().get(
-                AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
-                .setGranularity(granularity);
     }
 }

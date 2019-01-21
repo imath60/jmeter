@@ -36,8 +36,9 @@ import org.apache.jmeter.util.JMeterUtils;
 /**
  * JMeter GUI component representing a work bench where users can make
  * preparations for the test plan.
- *
+ * @deprecated since 4.0 Non Test Elements are now children of Test Plan
  */
+@Deprecated
 public class WorkBenchGui extends AbstractJMeterGuiComponent {
     private static final long serialVersionUID = 240L;
     // This check-box defines whether to save  WorkBench content or not
@@ -100,7 +101,7 @@ public class WorkBenchGui extends AbstractJMeterGuiComponent {
     @Override
     public void clearGui() {
         super.clearGui();
-        saveWorkBench.setSelected(false);
+        saveWorkBench.setSelected(true);
     }
     
     /**
@@ -152,6 +153,7 @@ public class WorkBenchGui extends AbstractJMeterGuiComponent {
         VerticalPanel workBenchPropsPanel = new VerticalPanel(5, 0);
 
         saveWorkBench = new JCheckBox(JMeterUtils.getResString("save_workbench"));
+        saveWorkBench.setSelected(true);
         workBenchPropsPanel.add(saveWorkBench);
         add(workBenchPropsPanel, BorderLayout.CENTER);
     }

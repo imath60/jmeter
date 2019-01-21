@@ -45,9 +45,8 @@ import org.apache.jmeter.util.JMeterUtils;
 /**
  * About Command. It may be extended in the future to add a list of installed
  * protocols, config options, etc.
- *
  */
-public class AboutCommand implements Command {
+public class AboutCommand extends AbstractAction {
     private static final Set<String> commandSet;
 
     private static JDialog about;
@@ -83,41 +82,62 @@ public class AboutCommand implements Command {
      * the product image and the copyright notice. The dialog box is centered
      * over the MainFrame.
      */
-    void about() {
+    private void about() {
         JFrame mainFrame = GuiPackage.getInstance().getMainFrame();
-        if (about == null) {
-            about = new EscapeDialog(mainFrame, "About Apache JMeter...", false);
-            about.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    about.setVisible(false);
-                }
-            });
-
-            JLabel jmeter = new JLabel(JMeterUtils.getImage("jmeter.jpg"));
-            JLabel copyright = new JLabel(JMeterUtils.getJMeterCopyright(), SwingConstants.CENTER);
-            JLabel rights = new JLabel("All Rights Reserved.", SwingConstants.CENTER);
-            JLabel version = new JLabel("Apache JMeter Version " + JMeterUtils.getJMeterVersion(), SwingConstants.CENTER);
-            JPanel infos = new JPanel();
-            infos.setOpaque(false);
-            infos.setLayout(new GridLayout(0, 1));
-            infos.setBorder(new EmptyBorder(5, 5, 5, 5));
-            infos.add(copyright);
-            infos.add(rights);
-            infos.add(version);
-            Container panel = about.getContentPane();
-            panel.setLayout(new BorderLayout());
-            panel.setBackground(Color.white);
-            panel.add(jmeter, BorderLayout.NORTH);
-            panel.add(infos, BorderLayout.SOUTH);
-        }
+        JDialog dialog = initDialog(mainFrame);
 
         // NOTE: these lines center the about dialog in the current window. 
         Point p = mainFrame.getLocationOnScreen();
         Dimension d1 = mainFrame.getSize();
-        Dimension d2 = about.getSize();
-        about.setLocation(p.x + (d1.width - d2.width) / 2, p.y + (d1.height - d2.height) / 2);
+        Dimension d2 = dialog.getSize();
+        dialog.setLocation(p.x + (d1.width - d2.width) / 2, p.y + (d1.height - d2.height) / 2);
+        dialog.setVisible(true);
+    }
+
+    /**
+     * @param mainFrame {@link JFrame}
+     * @return {@link JDialog} initializing it if necessary
+     */
+    private JDialog initDialog(JFrame mainFrame) {
+        if (about != null) {
+            return about;
+        }
+        about = new EscapeDialog(mainFrame, "About Apache JMeter", false);
+        about.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                about.setVisible(false);
+            }
+        });
+
+        JLabel jmeterLogo = new JLabel(JMeterUtils.getImage("jmeter.png"));
+        JLabel copyright = new JLabel(JMeterUtils.getJMeterCopyright(), SwingConstants.CENTER);
+        JLabel rights = new JLabel("All Rights Reserved.", SwingConstants.CENTER);
+        JLabel version = new JLabel("Apache JMeter Version " + JMeterUtils.getJMeterVersion(), SwingConstants.CENTER);
+        JLabel releaseNotes = new JLabel("<html><a href=\"https://jmeter.apache.org/changes.html\">Release notes</a></html>", SwingConstants.CENTER);
+        releaseNotes.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() > 0) {
+                    ActionRouter.getInstance().doActionNow(
+                            new ActionEvent(e.getSource(), e.getID(), ActionNames.LINK_RELEASE_NOTES));
+                }
+            }
+        });
+        JPanel infos = new JPanel();
+        infos.setOpaque(false);
+        infos.setLayout(new GridLayout(0, 1));
+        infos.setBorder(new EmptyBorder(5, 5, 5, 5));
+        infos.add(copyright);
+        infos.add(rights);
+        infos.add(version);
+        infos.add(releaseNotes);
+        Container panel = about.getContentPane();
+        panel.setLayout(new BorderLayout());
+        panel.setBackground(Color.white);
+        panel.add(jmeterLogo, BorderLayout.NORTH);
+        panel.add(infos, BorderLayout.SOUTH);
         about.pack();
-        about.setVisible(true);
+        return about;
     }
 }

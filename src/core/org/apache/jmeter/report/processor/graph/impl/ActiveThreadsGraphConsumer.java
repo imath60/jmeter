@@ -17,7 +17,7 @@
  */
 package org.apache.jmeter.report.processor.graph.impl;
 
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,13 +26,12 @@ import org.apache.jmeter.report.processor.MeanAggregatorFactory;
 import org.apache.jmeter.report.processor.graph.AbstractGraphConsumer;
 import org.apache.jmeter.report.processor.graph.AbstractOverTimeGraphConsumer;
 import org.apache.jmeter.report.processor.graph.AbstractSeriesSelector;
-import org.apache.jmeter.report.processor.graph.GraphValueSelector;
 import org.apache.jmeter.report.processor.graph.GroupInfo;
 import org.apache.jmeter.report.processor.graph.TimeStampKeysSelector;
 
 /**
- * The class ActiveThreadsGraphConsumer provides a graph to visualize hits rate
- * per second.
+ * The class ActiveThreadsGraphConsumer provides a graph to visualize active threads 
+ * per time period (defined by granularity)
  *
  * @since 3.0
  */
@@ -66,18 +65,22 @@ public class ActiveThreadsGraphConsumer extends AbstractOverTimeGraphConsumer {
 
                     @Override
                     public Iterable<String> select(Sample sample) {
-                        String threadName = sample.getThreadName();
-                        int index = threadName.lastIndexOf(" ");
-                        if (index >= 0) {
-                            threadName = threadName.substring(0, index);
+                        if (!sample.isEmptyController()) {
+                            String threadName = sample.getThreadName();
+                            int index = threadName.lastIndexOf(' ');
+                            if (index >= 0) {
+                                threadName = threadName.substring(0, index);
+                            }
+                            return Collections.singletonList(threadName);
+                        } else {
+                            return Collections.emptyList();
                         }
-                        return Arrays.asList(new String[] { threadName });
                     }
-                }, new GraphValueSelector() {
-
-                    @Override
-                    public double select(String series, Sample sample) {
-                        return sample.getGroupThreads();
+                }, (series, sample) -> {
+                    if (!sample.isEmptyController()) {
+                        return Double.valueOf(sample.getGroupThreads());
+                    } else {
+                        return null;
                     }
                 }, false, false));
         return groupInfos;

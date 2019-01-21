@@ -22,14 +22,14 @@ import java.util.Collection;
 import java.util.Map;
 
 import org.apache.jmeter.testelement.TestElement;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class AbstractProperty implements JMeterProperty {
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
     //TODO consider using private logs for each derived class
-    protected static final Logger log = LoggingManager.getLoggerForClass();
+    protected static final Logger log = LoggerFactory.getLogger(AbstractProperty.class);
 
     private String name;
 
@@ -47,11 +47,7 @@ public abstract class AbstractProperty implements JMeterProperty {
     }
 
     protected boolean isEqualType(JMeterProperty prop) {
-        if (this.getClass().equals(prop.getClass())) {
-            return true;
-        } else {
-            return false;
-        }
+        return this.getClass().equals(prop.getClass());
     }
 
     /** {@inheritDoc} */
@@ -235,7 +231,7 @@ public abstract class AbstractProperty implements JMeterProperty {
         String val = getStringValue();
         String val2 = arg0.getStringValue();
         if (val == null) {
-            log.warn("Warning: Unexpected null value for property: " + name);
+            log.warn("Warning: Unexpected null value for property: {}", name);
 
             if (val2 == null) {
                 // Two null values -- return equal
@@ -259,7 +255,7 @@ public abstract class AbstractProperty implements JMeterProperty {
 
     protected JMeterProperty getBlankProperty() {
         try {
-            JMeterProperty prop = getPropertyType().newInstance();
+            JMeterProperty prop = getPropertyType().getDeclaredConstructor().newInstance();
             if (prop instanceof NullProperty) {
                 return new StringProperty();
             }
@@ -297,20 +293,15 @@ public abstract class AbstractProperty implements JMeterProperty {
      * @return Collection of JMeterProperty objects
      */
     protected Collection<JMeterProperty> normalizeList(Collection<?> coll) {
-        if (coll.isEmpty()) {
-            @SuppressWarnings("unchecked") // empty collection, local var is here to allow SuppressWarnings
-            Collection<JMeterProperty> okColl = (Collection<JMeterProperty>) coll;
-            return okColl;
-        }
         try {
             @SuppressWarnings("unchecked") // empty collection
-            Collection<JMeterProperty> newColl = coll.getClass().newInstance();
+            Collection<JMeterProperty> newColl = coll.getClass().getDeclaredConstructor().newInstance();
             for (Object item : coll) {
                 newColl.add(convertObject(item));
             }
             return newColl;
         } catch (Exception e) {// should not happen
-            log.error("Cannot create copy of "+coll.getClass().getName(),e);
+            log.error("Cannot create copy of {}", coll.getClass(), e);
             return null;
         }
     }
@@ -324,15 +315,10 @@ public abstract class AbstractProperty implements JMeterProperty {
      * @return converted Map
      */
     protected Map<String, JMeterProperty> normalizeMap(Map<?,?> coll) {
-        if (coll.isEmpty()) {
-            @SuppressWarnings("unchecked")// empty collection ok to cast, local var is here to allow SuppressWarnings
-            Map<String, JMeterProperty> emptyColl = (Map<String, JMeterProperty>) coll;
-            return emptyColl;
-        }
         try {
             @SuppressWarnings("unchecked") // empty collection
-            Map<String, JMeterProperty> newColl = coll.getClass().newInstance();
-            for (Map.Entry<?,?> entry : ((Map<?,?>)coll).entrySet()) {
+            Map<String, JMeterProperty> newColl = coll.getClass().getDeclaredConstructor().newInstance();
+            for (Map.Entry<?,?> entry : coll.entrySet()) {
                 Object key = entry.getKey();
                 Object prop = entry.getValue();
                 String item=null;
@@ -340,7 +326,7 @@ public abstract class AbstractProperty implements JMeterProperty {
                     item = (String) key;
                 } else {
                     if (key != null) {
-                        log.error("Expected key type String, found: "+key.getClass().getName());
+                        log.error("Expected key type String, found: {}", key.getClass());
                         item = key.toString();
                     }
                 }
@@ -348,7 +334,7 @@ public abstract class AbstractProperty implements JMeterProperty {
             }
             return newColl;
         } catch (Exception e) {// should not happen
-            log.error("Cannot create copy of "+coll.getClass().getName(),e);
+            log.error("Cannot create copy of {}", coll.getClass(), e);
             return null;
         }
     }
@@ -369,7 +355,7 @@ public abstract class AbstractProperty implements JMeterProperty {
      * <li>TestElement =&gt; TestElementProperty with the same name</li>
      * <li>Map|Collection =&gt; Map|CollectionProperty with the name = item.hashCode</li>
      * </ul>
-     * @param item object to be turned into a propery
+     * @param item object to be turned into a property
      * @return the JMeterProperty
      */
     protected static JMeterProperty makeProperty(Object item) {

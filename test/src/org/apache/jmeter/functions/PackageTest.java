@@ -25,14 +25,14 @@ import java.util.Collection;
 import java.util.LinkedList;
 
 import org.apache.jmeter.engine.util.CompoundVariable;
-import org.apache.jmeter.junit.JMeterTestCaseJUnit3;
+import org.apache.jmeter.junit.JMeterTestCaseJUnit;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterContextService;
 import org.apache.jmeter.threads.JMeterVariables;
 import org.apache.jmeter.util.BeanShellInterpreter;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import junit.extensions.ActiveTestSuite;
 import junit.framework.Test;
@@ -41,9 +41,9 @@ import junit.framework.TestSuite;
 /**
  * Test cases for Functions
  */
-public class PackageTest extends JMeterTestCaseJUnit3 {
+public class PackageTest extends JMeterTestCaseJUnit {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(PackageTest.class);
 
     public PackageTest(String arg0) {
         super(arg0);
@@ -97,6 +97,7 @@ public class PackageTest extends JMeterTestCaseJUnit3 {
         xpath.addTest(new PackageTest("XPathtestNull"));
         xpath.addTest(new PackageTest("XPathtestrowNum"));
         xpath.addTest(new PackageTest("XPathEmpty"));
+        xpath.addTest(new PackageTest("XPathFile"));
         xpath.addTest(new PackageTest("XPathFile1"));
         xpath.addTest(new PackageTest("XPathFile2"));
         xpath.addTest(new PackageTest("XPathNoFile"));
@@ -202,7 +203,8 @@ public class PackageTest extends JMeterTestCaseJUnit3 {
     }
 
     // Function objects to be tested
-    private static CSVRead cr1, cr4;
+    private static CSVRead cr1;
+    private static CSVRead cr4;
 
     // Helper class used to implement co-routine between two threads
     private static class Baton {
@@ -280,8 +282,8 @@ public class PackageTest extends JMeterTestCaseJUnit3 {
 
 
     public void CSVSetup() throws Exception {
-        cr1 = setCSVReadParams("testfiles/test.csv", "1");
-        cr4 = setCSVReadParams("testfiles/test.csv", "next");
+        cr1 = setCSVReadParams("testfiles/unit/FunctionsPackageTest.csv", "1");
+        cr4 = setCSVReadParams("testfiles/unit/FunctionsPackageTest.csv", "next");
     }
 
 
@@ -348,6 +350,17 @@ public class PackageTest extends JMeterTestCaseJUnit3 {
         String val=xp.execute();
         assertEquals("",val); // TODO - should check that error has been logged...
     }
+
+    public void XPathFile() throws Exception{
+        XPath xp = setupXPath("testfiles/XPathTest2.xml","note/body");
+        assertEquals("Don't forget me this weekend!",xp.execute());
+        
+        xp = setupXPath("testfiles/XPathTest2.xml","//note2");
+        assertEquals("", xp.execute());
+        
+        xp = setupXPath("testfiles/XPathTest2.xml","//note/to");
+        assertEquals("Tove", xp.execute());
+    }
     
     public void XPathFile1() throws Exception{
         XPath xp = setupXPath("testfiles/XPathTest.xml","//user/@username");
@@ -374,7 +387,8 @@ public class PackageTest extends JMeterTestCaseJUnit3 {
 
     }
     
-    private static XPath sxp1,sxp2;
+    private static XPath sxp1;
+    private static XPath sxp2;
     // Use same XPath for both threads
     public void XPathSetup1() throws Exception{
         sxp1  = setupXPath("testfiles/XPathTest.xml","//user/@username");

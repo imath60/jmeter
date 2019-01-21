@@ -61,7 +61,8 @@ public class HitsPerSecondGraphConsumer extends AbstractOverTimeGraphConsumer {
         HashMap<String, GroupInfo> groupInfos = new HashMap<>(1);
         groupInfos.put(AbstractGraphConsumer.DEFAULT_GROUP, new GroupInfo(
                 new TimeRateAggregatorFactory(), new StaticSeriesSelector(),
-                new CountValueSelector(), false, false));
+                // We ignore Transaction Controller results
+                new CountValueSelector(true), false, false));
         return groupInfos;
     }
 
@@ -75,10 +76,20 @@ public class HitsPerSecondGraphConsumer extends AbstractOverTimeGraphConsumer {
     @Override
     public void setGranularity(long granularity) {
         super.setGranularity(granularity);
+        
+    }
+
+    @Override
+    public void initialize() {
+        super.initialize();
         // Override the granularity of the aggregators factory
         ((TimeRateAggregatorFactory) getGroupInfos().get(
                 AbstractGraphConsumer.DEFAULT_GROUP).getAggregatorFactory())
-                .setGranularity(granularity);
+                .setGranularity(getGranularity());
+        // Override the series name with the name of the graph
+        ((StaticSeriesSelector) getGroupInfos().get(
+                AbstractGraphConsumer.DEFAULT_GROUP).getSeriesSelector())
+                .setSeriesName(getName());
     }
 
     /*
@@ -91,9 +102,5 @@ public class HitsPerSecondGraphConsumer extends AbstractOverTimeGraphConsumer {
     @Override
     public void setName(String name) {
         super.setName(name);
-        // Override the series name with the name of the graph
-        ((StaticSeriesSelector) getGroupInfos().get(
-                AbstractGraphConsumer.DEFAULT_GROUP).getSeriesSelector())
-                .setSeriesName(name);
     }
 }

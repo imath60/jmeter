@@ -37,8 +37,8 @@ import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.threads.JMeterContextService;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Use this Keystore for JMeter specific KeyStores.
@@ -46,7 +46,9 @@ import org.apache.log.Logger;
  */
 public final class JmeterKeyStore {
 
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(JmeterKeyStore.class);
+
+    public static final String DEFAULT_ALIAS_VAR_NAME = "certAlias";
 
     private final KeyStore store;
 
@@ -63,9 +65,7 @@ public final class JmeterKeyStore {
     private Map<String, PrivateKey> privateKeyByAlias = new HashMap<>();
     private Map<String, X509Certificate[]> certsByAlias = new HashMap<>();
 
-    //@GuardedBy("this")
-    private int last_user;
-
+    private int lastAliasIndex;
 
     /**
      * @param type
@@ -80,7 +80,7 @@ public final class JmeterKeyStore {
      *             &lt; 0 or <code>endIndex</code> &lt; </code>startIndex</code>
      */
     private JmeterKeyStore(String type, int startIndex, int endIndex, String clientCertAliasVarName) throws KeyStoreException {
-        if (startIndex < 0 || endIndex < 0 || endIndex < startIndex) {
+        if (startIndex < 0 || (endIndex != -1 && endIndex < startIndex)) {
             throw new IllegalArgumentException("Invalid index(es). Start="+startIndex+", end="+endIndex);
         }
         this.store = KeyStore.getInstance(type);
@@ -111,56 +111,57 @@ public final class JmeterKeyStore {
      *             if the key can not be recovered from the store (should not
      *             happen here, either)
      */
-    public void load(InputStream is, String pword) throws NoSuchAlgorithmException, CertificateException, IOException, KeyStoreException, UnrecoverableKeyException {
+    public void load(InputStream is, String pword)
+            throws NoSuchAlgorithmException, CertificateException, IOException, KeyStoreException, UnrecoverableKeyException {
         char[] pw = pword==null ? null : pword.toCharArray();
         store.load(is, pw);
     
-        List<String> v_names = new ArrayList<>();
+        List<String> aliasesList = new ArrayList<>();
         this.privateKeyByAlias = new HashMap<>();
         this.certsByAlias = new HashMap<>();
 
         if (null != is){ // No point checking an empty keystore
-            PrivateKey _key = null;
+            PrivateKey privateKey = null;
             int index = 0;
             Enumeration<String> aliases = store.aliases();
             while (aliases.hasMoreElements()) {
                 String alias = aliases.nextElement();
                 if (store.isKeyEntry(alias)) {
-                    if (index >= startIndex && index <= endIndex) {
-                        _key = (PrivateKey) store.getKey(alias, pw);
-                        if (null == _key) {
+                    if (index >= startIndex && (endIndex== -1 || index <= endIndex)) {
+                        privateKey = (PrivateKey) store.getKey(alias, pw);
+                        if (null == privateKey) {
                             throw new IOException("No key found for alias: " + alias); // Should not happen
                         }
                         Certificate[] chain = store.getCertificateChain(alias);
                         if (null == chain) {
                             throw new IOException("No certificate chain found for alias: " + alias);
                         }
-                        v_names.add(alias);
+                        aliasesList.add(alias);
                         X509Certificate[] x509certs = new X509Certificate[chain.length];
                         for (int i = 0; i < x509certs.length; i++) {
                             x509certs[i] = (X509Certificate)chain[i];
                         }
 
-                        privateKeyByAlias.put(alias, _key);
+                        privateKeyByAlias.put(alias, privateKey);
                         certsByAlias.put(alias, x509certs);
                     }
                     index++;
                 }
             }
     
-            if (null == _key) {
+            if (null == privateKey) {
                 throw new IOException("No key(s) found");
             }
-            if (index <= endIndex-startIndex) {
-                LOG.warn("Did not find all requested aliases. Start="+startIndex
-                        +", end="+endIndex+", found="+certsByAlias.size());
+            if (endIndex != -1 && index <= endIndex-startIndex && log.isWarnEnabled()) {
+                log.warn("Did not find as much aliases as configured in indexes Start={}, end={}, found={}",
+                        startIndex, endIndex, certsByAlias.size());
             }
         }
     
         /*
          * Note: if is == null, the arrays will be empty
          */
-        this.names = v_names.toArray(new String[v_names.size()]);
+        this.names = aliasesList.toArray(new String[aliasesList.size()]);
     }
 
 
@@ -196,7 +197,7 @@ public final class JmeterKeyStore {
             // We return even if result is null
             String aliasName = JMeterContextService.getContext().getVariables().get(clientCertAliasVarName);
             if(StringUtils.isEmpty(aliasName)) {
-                LOG.error("No var called '"+clientCertAliasVarName+"' found");
+                log.error("No var called '{}' found", clientCertAliasVarName);
                 throw new IllegalArgumentException("No var called '"+clientCertAliasVarName+"' found");
             }
             return aliasName;
@@ -273,7 +274,7 @@ public final class JmeterKeyStore {
      *             when the type of the store is not supported
      */
     public static JmeterKeyStore getInstance(String type) throws KeyStoreException {
-        return getInstance(type, 0, 0, null);
+        return getInstance(type, 0, -1, DEFAULT_ALIAS_VAR_NAME);
     }
 
     /**
@@ -282,9 +283,9 @@ public final class JmeterKeyStore {
      */
     private int getIndexAndIncrement(int length) {
         synchronized(this) {
-            int result = last_user++;
-            if (last_user >= length) {
-                last_user = 0;
+            int result = lastAliasIndex++;
+            if (lastAliasIndex >= length) {
+                lastAliasIndex = 0;
             }
             return result;
         }
@@ -303,16 +304,13 @@ public final class JmeterKeyStore {
         int count = getAliasCount();
         String[] aliases = new String[count];
         for(int i = 0; i < aliases.length; i++) {
-//            if (keys[i].getAlgorithm().equals(keyType)){
-//                
-//            }
             aliases[i] = this.names[i];
         }
         if(aliases.length>0) {
             return aliases;
         } else {
             // API expects null not empty array, see http://docs.oracle.com/javase/7/docs/api/javax/net/ssl/X509KeyManager.html
-            return null;
+            return null; // NOSONAR
         }
     }
 

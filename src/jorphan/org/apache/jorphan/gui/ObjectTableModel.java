@@ -23,19 +23,18 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.swing.event.TableModelEvent;
 import javax.swing.table.DefaultTableModel;
 
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.Functor;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The ObjectTableModel is a TableModel whose rows are objects;
  * columns are defined as Functors on the object.
  */
 public class ObjectTableModel extends DefaultTableModel {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(ObjectTableModel.class);
 
     private static final long serialVersionUID = 240L;
 
@@ -105,18 +104,18 @@ public class ObjectTableModel extends DefaultTableModel {
 
         int numClasses = classes.size();
         if (numClasses != numHeaders){
-            log.warn("Header count="+numHeaders+" but classes count="+numClasses);
+            log.warn("Header count={} but classes count={}", numHeaders, numClasses);
         }
 
         // Functor count = 0 is handled specially
         int numWrite = writeFunctors.length;
         if (numWrite > 0 && numWrite != numHeaders){
-            log.warn("Header count="+numHeaders+" but writeFunctor count="+numWrite);
+            log.warn("Header count={} but writeFunctor count={}", numHeaders, numWrite);
         }
 
         int numRead = readFunctors.length;
         if (numRead > 0 && numRead != numHeaders){
-            log.warn("Header count="+numHeaders+" but readFunctor count="+numRead);
+            log.warn("Header count={} but readFunctor count={}", numHeaders, numRead);
         }
     }
 
@@ -134,13 +133,12 @@ public class ObjectTableModel extends DefaultTableModel {
     }
 
     public void clearData() {
-        int size = getRowCount();
         objects.clear();
-        super.fireTableRowsDeleted(0, size);
+        super.fireTableDataChanged();
     }
 
     public void addRow(Object value) {
-        log.debug("Adding row value: " + value);
+        log.debug("Adding row value: {}", value);
         if (objectClass != null) {
             final Class<?> valueClass = value.getClass();
             if (!objectClass.isAssignableFrom(valueClass)){
@@ -149,12 +147,12 @@ public class ObjectTableModel extends DefaultTableModel {
             }
         }
         objects.add(value);
-        super.fireTableRowsInserted(objects.size() - 1, objects.size());
+        super.fireTableRowsInserted(objects.size() - 1, objects.size() - 1);
     }
 
     public void insertRow(Object value, int index) {
         objects.add(index, value);
-        super.fireTableRowsInserted(index, index + 1);
+        super.fireTableRowsInserted(index, index);
     }
 
     /** {@inheritDoc} */
@@ -202,12 +200,11 @@ public class ObjectTableModel extends DefaultTableModel {
     /** {@inheritDoc} */
     @Override
     public void moveRow(int start, int end, int to) {
-        List<Object> subList = new ArrayList<>(objects.subList(start, end));
-        for (int x = end - 1; x >= start; x--) {
-            objects.remove(x);
-        }
-        objects.addAll(to, subList);
-        super.fireTableChanged(new TableModelEvent(this));
+        List<Object> subList = objects.subList(start, end);
+        List<Object> backup  = new ArrayList<>(subList);
+        subList.clear();
+        objects.addAll(to, backup);
+        super.fireTableDataChanged();
     }
 
     /** {@inheritDoc} */
@@ -260,12 +257,9 @@ public class ObjectTableModel extends DefaultTableModel {
         Object value;
         if (_value == null && objectClass != null) {
             try {
-                value = objectClass.newInstance();
-            } catch (InstantiationException e) {
-                log.error("Cannot create instance of class "+objectClass.getName(),e);
-                return false;
-            } catch (IllegalAccessException e) {
-                log.error("Cannot create instance of class "+objectClass.getName(),e);
+                value = objectClass.getDeclaredConstructor().newInstance();
+            } catch (ReflectiveOperationException e) {
+                log.error("Cannot create instance of class {}", objectClass.getName(),e);
                 return false;
             }
         } else {
@@ -274,25 +268,34 @@ public class ObjectTableModel extends DefaultTableModel {
         boolean status = true;
         for(int i=0;i<getColumnCount();i++){
             Functor setMethod = writeFunctors.get(i);
-            if (setMethod != null) {
-                if (!setMethod.checkMethod(value,getColumnClass(i))){
+            if (setMethod != null
+                 && !setMethod.checkMethod(value,getColumnClass(i))) {
                     status=false;
-                    log.warn(caller.getName()+" is attempting to use nonexistent "+setMethod.toString());
-                }
+                    log.warn("{} is attempting to use nonexistent {}", caller.getName(), setMethod);
             }
+            
             Functor getMethod = readFunctors.get(i);
-            if (getMethod != null) {
-                if (!getMethod.checkMethod(value)){
+            if (getMethod != null 
+                 && !getMethod.checkMethod(value)) {
                     status=false;
-                    log.warn(caller.getName()+" is attempting to use nonexistent "+getMethod.toString());
-                }
+                    log.warn("{} is attempting to use nonexistent {}", caller.getName(), getMethod);
             }
 
         }
         return status;
     }
 
+    /**
+     * @return Object (List of Object)
+     */
     public Object getObjectList() { // used by TableEditor
+        return objects;
+    }
+    
+    /**
+     * @return List of Object
+     */
+    public List<Object> getObjectListAsList() { 
         return objects;
     }
 

@@ -30,8 +30,8 @@ import javax.swing.SwingConstants;
 
 import org.apache.jmeter.samplers.SampleResult;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Manipulate all classes which implements request view panel interface
@@ -40,14 +40,14 @@ import org.apache.log.Logger;
  */
 public class RequestPanel {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RequestPanel.class);
 
     private final LinkedList<RequestView> listRequestView;
 
     private final JPanel panel;
 
     /**
-     * Find and instanciate all class that extend RequestView
+     * Find and instantiate all classes that extend RequestView
      * and Create Request Panel
      */
     public RequestPanel() {
@@ -63,14 +63,14 @@ public class RequestPanel {
         for (String clazz : classesToAdd) {
             try {
                 // Instantiate requestview classes
-                final RequestView requestView = (RequestView) Class.forName(clazz).newInstance();
+                final RequestView requestView = (RequestView) Class.forName(clazz).getDeclaredConstructor().newInstance();
                 if (rawTab.equals(requestView.getLabel())) {
                     rawObject = requestView; // use later
                 } else {
                     listRequestView.add(requestView);
                 }
             } catch (Exception e) {
-                log.warn("Error in load result render:" + clazz, e); // $NON-NLS-1$
+                log.warn("Error in load result render: {}", clazz, e); // $NON-NLS-1$
             }
         }
         // place raw tab in first position (first tab)

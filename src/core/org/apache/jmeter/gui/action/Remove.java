@@ -33,7 +33,7 @@ import org.apache.jmeter.util.JMeterUtils;
 /**
  * Implements the Remove menu item.
  */
-public class Remove implements Command {
+public class Remove extends AbstractAction {
 
     private static final Set<String> commands = new HashSet<>();
 
@@ -89,6 +89,7 @@ public class Remove implements Command {
         if (testElement.canRemove()) {
             GuiPackage.getInstance().getTreeModel().removeNodeFromParent(node);
             GuiPackage.getInstance().removeNode(testElement);
+            testElement.removed();
         } else {
             String message = testElement.getClass().getName() + " is busy";
             JOptionPane.showMessageDialog(null, message, "Cannot remove item", JOptionPane.ERROR_MESSAGE);

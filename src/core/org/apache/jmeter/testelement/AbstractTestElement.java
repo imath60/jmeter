@@ -43,15 +43,15 @@ import org.apache.jmeter.testelement.property.StringProperty;
 import org.apache.jmeter.testelement.property.TestElementProperty;
 import org.apache.jmeter.threads.JMeterContext;
 import org.apache.jmeter.threads.JMeterContextService;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  */
 public abstract class AbstractTestElement implements TestElement, Serializable, Searchable {
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(AbstractTestElement.class);
 
     private final Map<String, JMeterProperty> propMap =
         Collections.synchronizedMap(new LinkedHashMap<String, JMeterProperty>());
@@ -71,7 +71,7 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
     @Override
     public Object clone() {
         try {
-            TestElement clonedElement = this.getClass().newInstance();
+            TestElement clonedElement = this.getClass().getDeclaredConstructor().newInstance();
 
             PropertyIterator iter = propertyIterator();
             while (iter.hasNext()) {
@@ -79,7 +79,7 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
             }
             clonedElement.setRunningVersion(runningVersion);
             return clonedElement;
-        } catch (InstantiationException | IllegalAccessException e) {
+        } catch (IllegalArgumentException | ReflectiveOperationException | SecurityException e) {
             throw new AssertionError(e); // clone should never return null
         }
     }
@@ -187,6 +187,16 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
         }
         return prop;
     }
+    
+    /**
+     * Null property are wrapped in a {@link NullProperty}
+     * This method avoids this wrapping
+     * for internal use only
+     * @since 3.1
+     */
+    private JMeterProperty getRawProperty(String key) {
+        return propMap.get(key);
+    }
 
     @Override
     public void traverse(TestElementTraverser traverser) {
@@ -230,8 +240,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
 
     @Override
     public int getPropertyAsInt(String key, int defaultValue) {
-        JMeterProperty jmp = getProperty(key);
-        return jmp instanceof NullProperty ? defaultValue : jmp.getIntValue();
+        JMeterProperty jmp = getRawProperty(key);
+        return jmp == null || jmp instanceof NullProperty ? defaultValue : jmp.getIntValue();
     }
 
     @Override
@@ -241,8 +251,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
 
     @Override
     public boolean getPropertyAsBoolean(String key, boolean defaultVal) {
-        JMeterProperty jmp = getProperty(key);
-        return jmp instanceof NullProperty ? defaultVal : jmp.getBooleanValue();
+        JMeterProperty jmp = getRawProperty(key);
+        return jmp == null || jmp instanceof NullProperty ? defaultVal : jmp.getBooleanValue();
     }
 
     @Override
@@ -257,8 +267,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
 
     @Override
     public long getPropertyAsLong(String key, long defaultValue) {
-        JMeterProperty jmp = getProperty(key);
-        return jmp instanceof NullProperty ? defaultValue : jmp.getLongValue();
+        JMeterProperty jmp = getRawProperty(key);
+        return jmp == null || jmp instanceof NullProperty ? defaultValue : jmp.getLongValue();
     }
 
     @Override
@@ -273,8 +283,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
 
     @Override
     public String getPropertyAsString(String key, String defaultValue) {
-        JMeterProperty jmp = getProperty(key);
-        return jmp instanceof NullProperty ? defaultValue : jmp.getStringValue();
+        JMeterProperty jmp = getRawProperty(key);
+        return jmp == null || jmp instanceof NullProperty ? defaultValue : jmp.getStringValue();
     }
 
     /**
@@ -329,8 +339,8 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
             PropertyIterator iter = propertyIterator();
             while (iter.hasNext()) {
                 JMeterProperty prop = iter.next();
-                log.debug("Property " + prop.getName() + " is temp? " + isTemporary(prop) + " and is a "
-                        + prop.getObjectValue());
+                log.debug("Property {} is temp? {} and is a {}", prop.getName(), isTemporary(prop),
+                        prop.getObjectValue());
             }
         }
     }
@@ -554,9 +564,6 @@ public abstract class AbstractTestElement implements TestElement, Serializable, 
              * Only samplers have the thread context set up by JMeterThread at
              * present, so suppress the warning for now
              */
-            // log.warn("ThreadContext was not set up - should only happen in
-            // JUnit testing..."
-            // ,new Throwable("Debug"));
             threadContext = JMeterContextService.getContext();
         }
         return threadContext;

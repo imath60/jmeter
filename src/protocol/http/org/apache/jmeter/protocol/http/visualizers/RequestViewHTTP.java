@@ -1,17 +1,17 @@
 /*
-o * Licensed to the Apache Software Foundation (ASF) under one or more
+ * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
  * work for additional information regarding copyright ownership. The ASF
  * licenses this file to You under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * 
+ *
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
@@ -23,6 +23,7 @@ import java.awt.Component;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -53,21 +54,20 @@ import org.apache.jmeter.visualizers.SearchTextExtension.ISearchTextExtensionPro
 import org.apache.jorphan.gui.GuiUtils;
 import org.apache.jorphan.gui.ObjectTableModel;
 import org.apache.jorphan.gui.RendererUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.Functor;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Specializer panel to view a HTTP request parsed
- *
  */
 public class RequestViewHTTP implements RequestView {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(RequestViewHTTP.class);
 
     private static final String KEY_LABEL = "view_results_table_request_tab_http"; //$NON-NLS-1$
     
-    private static final String CHARSET_DECODE = "ISO-8859-1"; //$NON-NLS-1$
+    private static final String CHARSET_DECODE = StandardCharsets.ISO_8859_1.name();
     
     private static final String PARAM_CONCATENATE = "&"; //$NON-NLS-1$
 
@@ -150,14 +150,9 @@ public class RequestViewHTTP implements RequestView {
     @Override
     public void init() {
         paneParsed = new JPanel(new BorderLayout(0, 5));
-        paneParsed.add(createRequestPane());
-        this.searchTextExtension = new SearchTextExtension();
-        this.searchTextExtension.init(paneParsed);
-        JPanel searchPanel = this.searchTextExtension.createSearchTextExtensionPane();
-        searchPanel.setBorder(null);
-        this.searchTextExtension.setSearchProvider(new RequestViewHttpSearchProvider());
-        searchPanel.setVisible(true);
-        paneParsed.add(searchPanel, BorderLayout.PAGE_END);
+        paneParsed.add(createRequestPane(), BorderLayout.CENTER);
+        this.searchTextExtension = new SearchTextExtension(new RequestViewHttpSearchProvider());
+        paneParsed.add(searchTextExtension.getSearchToolBar(), BorderLayout.NORTH);
     }
 
     /* (non-Javadoc)
@@ -280,10 +275,7 @@ public class RequestViewHTTP implements RequestView {
      */
     private boolean isMultipart(LinkedHashMap<String, String> headers) {
         String contentType = headers.get(HTTPConstants.HEADER_CONTENT_TYPE);
-        if (contentType != null && contentType.startsWith(HTTPConstants.MULTIPART_FORM_DATA)) {
-            return true;
-        }
-        return false;
+        return contentType != null && contentType.startsWith(HTTPConstants.MULTIPART_FORM_DATA);
     }
 
     /**
@@ -297,9 +289,8 @@ public class RequestViewHTTP implements RequestView {
         String[] params = query.split(PARAM_CONCATENATE);
         for (String param : params) {
             String[] paramSplit = param.split("=");
-            String name = paramSplit[0];
-            name = decodeQuery(name);
-            
+            String name = decodeQuery(paramSplit[0]);
+
             // hack for SOAP request (generally)
             if (name.trim().startsWith("<?")) { // $NON-NLS-1$
                 map.put(" ", new String[] {query}); //blank name // $NON-NLS-1$
@@ -314,8 +305,7 @@ public class RequestViewHTTP implements RequestView {
 
             String value = "";
             if(paramSplit.length>1) {
-                value = paramSplit[1];
-                value = decodeQuery(value);
+                value = decodeQuery(paramSplit[1]);
             }
             
             String[] known = map.get(name);
@@ -339,22 +329,21 @@ public class RequestViewHTTP implements RequestView {
      * 
      * @param query
      *            to decode
-     * @return a decode query string
+     * @return the decoded query string, if it can be url-decoded. Otherwise the original
+     *            query will be returned.
      */
     public static String decodeQuery(String query) {
         if (query != null && query.length() > 0) {
             try {
-                query = URLDecoder.decode(query, CHARSET_DECODE); // better ISO-8859-1 than UTF-8
-            } catch(IllegalArgumentException e) {
-                log.warn("Error decoding query, maybe your request parameters should be encoded:" + query, e);
-                return null;
-            } catch (UnsupportedEncodingException uee) {
-                log.warn("Error decoding query, maybe your request parameters should be encoded:" + query, uee);
-                return null;
-            } 
-            return query;
+                return URLDecoder.decode(query, CHARSET_DECODE); // better  ISO-8859-1 than UTF-8
+            } catch (IllegalArgumentException | UnsupportedEncodingException e) {
+                log.warn(
+                        "Error decoding query, maybe your request parameters should be encoded:"
+                                + query, e);
+                return query;
+            }
         }
-        return null;
+        return "";
     }
 
     @Override
@@ -457,7 +446,7 @@ public class RequestViewHTTP implements RequestView {
                         Object o = tableParams.getModel().getValueAt(i, j);
                         if(o instanceof String) {
                             Matcher matcher = pattern.matcher((String) o);
-                            if ((matcher != null) && (matcher.find())) {
+                            if (matcher.find()) {
                                 found =  true;
                                 tableParams.setRowSelectionInterval(i, i);
                                 tableParams.scrollRectToVisible(tableParams.getCellRect(i, 0, true));

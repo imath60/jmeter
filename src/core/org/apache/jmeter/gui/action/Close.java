@@ -27,6 +27,7 @@ import javax.swing.JTree;
 
 import org.apache.jmeter.gui.GuiPackage;
 import org.apache.jmeter.gui.util.FocusRequester;
+import org.apache.jmeter.services.FileServer;
 import org.apache.jmeter.util.JMeterUtils;
 
 /**
@@ -34,7 +35,7 @@ import org.apache.jmeter.util.JMeterUtils;
  * test plan.
  *
  */
-public class Close implements Command {
+public class Close extends AbstractActionWithNoRunningTest {
 
     private static final Set<String> commands = new HashSet<>();
 
@@ -65,7 +66,7 @@ public class Close implements Command {
      *            the generic UI action event
      */
     @Override
-    public void doAction(ActionEvent e) {
+    public void doActionAfterCheck(ActionEvent e) {
         performAction(e);
     }
 
@@ -108,6 +109,7 @@ public class Close implements Command {
         JTree tree = guiPackage.getTreeListener().getJTree();
         tree.setSelectionRow(0);
         FocusRequester.requestFocus(tree);
+        FileServer.getFileServer().setScriptName(null);
         ActionRouter.getInstance().actionPerformed(new ActionEvent(e.getSource(), e.getID(), ActionNames.ADD_ALL));
     }
 }

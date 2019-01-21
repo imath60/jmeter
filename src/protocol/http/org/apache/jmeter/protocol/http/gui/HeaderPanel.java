@@ -35,9 +35,9 @@ import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.table.AbstractTableModel;
-import javax.swing.table.TableCellEditor;
 
 import org.apache.jmeter.config.gui.AbstractConfigGui;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.gui.util.FileDialoger;
 import org.apache.jmeter.gui.util.HeaderAsPropertyRenderer;
 import org.apache.jmeter.protocol.http.control.Header;
@@ -45,39 +45,33 @@ import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jorphan.gui.GuiUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Allows the user to specify if she needs HTTP header services, and give
  * parameters for this service.
- *
  */
-public class HeaderPanel extends AbstractConfigGui implements ActionListener
-{
-    private static final long serialVersionUID = 240L;
+@GUIMenuSortOrder(2)
+public class HeaderPanel extends AbstractConfigGui implements ActionListener {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HeaderPanel.class);
 
+    private static final long serialVersionUID = 241L;
+
+    private static final String CLIPBOARD_LINE_DELIMITER = "\n";
+    private static final String CLIPBOARD_COLON_DELIMITER = ":";
+    private static final String CLIPBOARD_TAB_DELIMITER = "\t";
     private static final String ADD_COMMAND = "Add"; // $NON-NLS-1$
-
     private static final String DELETE_COMMAND = "Delete"; // $NON-NLS-1$
-
     private static final String LOAD_COMMAND = "Load"; // $NON-NLS-1$
-
     private static final String SAVE_COMMAND = "Save"; // $NON-NLS-1$
-
-    /** Command for adding rows from the clipboard */
     private static final String ADD_FROM_CLIPBOARD = "addFromClipboard"; // $NON-NLS-1$
 
     private final InnerTableModel tableModel;
-
     private final HeaderManager headerManager;
-
     private JTable headerTable;
-
     private JButton deleteButton;
-
     private JButton saveButton;
 
     public HeaderPanel() {
@@ -105,9 +99,6 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
         configureTestElement(el);
     }
 
-    /**
-     * Implements JMeterGUIComponent.clearGui
-     */
     @Override
     public void clearGui() {
         super.clearGui();
@@ -122,10 +113,7 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
         headerManager.clear();
         super.configure(el);
         headerManager.addTestElement(el);
-        boolean hasRows = tableModel.getRowCount() > 0;
-        deleteButton.setEnabled(hasRows);
-        saveButton.setEnabled(hasRows);
-
+        checkButtonsStatus();
     }
 
     @Override
@@ -141,46 +129,58 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
         add(createHeaderTablePanel(), BorderLayout.CENTER);
     }
 
+    private void checkButtonsStatus() {
+        if (tableModel.getRowCount() == 0) {
+            deleteButton.setEnabled(false);
+            saveButton.setEnabled(false);
+        } else {
+            deleteButton.setEnabled(true);
+            saveButton.setEnabled(true);
+        }
+    }
+
+    /**
+     * Remove the currently selected rows from the table.
+     */
+    protected void deleteRows() {
+        // If a table cell is being edited, we must cancel the editing
+        // before deleting the row.
+        GuiUtils.cancelEditing(headerTable);
+
+        int[] rowsSelected = headerTable.getSelectedRows();
+        int anchorSelection = headerTable.getSelectionModel().getAnchorSelectionIndex();
+        headerTable.clearSelection();
+        if (rowsSelected.length > 0) {
+            for (int i = rowsSelected.length - 1; i >= 0; i--) {
+                tableModel.removeRow(rowsSelected[i]);
+            }
+            tableModel.fireTableDataChanged();
+
+            // Table still contains one or more rows, so highlight (select)
+            // the appropriate one.
+            if (tableModel.getRowCount() > 0) {
+                if (anchorSelection >= tableModel.getRowCount()) {
+                    anchorSelection = tableModel.getRowCount() - 1;
+                }
+                headerTable.setRowSelectionInterval(anchorSelection, anchorSelection);
+            }
+
+            checkButtonsStatus();
+        } else {
+            if(tableModel.getRowCount()>0) {
+                tableModel.removeRow(0);
+                tableModel.fireTableDataChanged();
+                headerTable.setRowSelectionInterval(0, 0);
+            }
+        }
+    }
+
     @Override
     public void actionPerformed(ActionEvent e) {
         String action = e.getActionCommand();
 
         if (action.equals(DELETE_COMMAND)) {
-            if (tableModel.getRowCount() > 0) {
-                // If a table cell is being edited, we must cancel the editing
-                // before deleting the row.
-                if (headerTable.isEditing()) {
-                    TableCellEditor cellEditor = headerTable.getCellEditor(headerTable.getEditingRow(),
-                            headerTable.getEditingColumn());
-                    cellEditor.cancelCellEditing();
-                }
-
-                int rowSelected = headerTable.getSelectedRow();
-
-                if (rowSelected != -1) {
-                    tableModel.removeRow(rowSelected);
-                    tableModel.fireTableDataChanged();
-
-                    // Disable the DELETE and SAVE buttons if no rows remaining
-                    // after delete
-                    if (tableModel.getRowCount() == 0) {
-                        deleteButton.setEnabled(false);
-                        saveButton.setEnabled(false);
-                    }
-
-                    // Table still contains one or more rows, so highlight
-                    // (select) the appropriate one.
-                    else {
-                        int rowToSelect = rowSelected;
-
-                        if (rowSelected >= tableModel.getRowCount()) {
-                            rowToSelect = rowSelected - 1;
-                        }
-
-                        headerTable.setRowSelectionInterval(rowToSelect, rowToSelect);
-                    }
-                }
-            }
+            deleteRows();
         } else if (action.equals(ADD_COMMAND)) {
             // If a table cell is being edited, we should accept the current
             // value and stop the editing before adding a new row.
@@ -189,14 +189,8 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
             tableModel.addNewRow();
             tableModel.fireTableDataChanged();
 
-            // Enable the DELETE and SAVE buttons if they are currently
-            // disabled.
-            if (!deleteButton.isEnabled()) {
-                deleteButton.setEnabled(true);
-            }
-            if (!saveButton.isEnabled()) {
-                saveButton.setEnabled(true);
-            }
+            // Enable the DELETE and SAVE buttons if they are currently disabled.
+            checkButtonsStatus();
 
             // Highlight (select) the appropriate row.
             int rowToSelect = tableModel.getRowCount() - 1;
@@ -208,10 +202,7 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
                     headerManager.addFile(chooser.getSelectedFile().getAbsolutePath());
                     tableModel.fireTableDataChanged();
 
-                    if (tableModel.getRowCount() > 0) {
-                        deleteButton.setEnabled(true);
-                        saveButton.setEnabled(true);
-                    }
+                    checkButtonsStatus();
                 }
             } catch (IOException ex) {
                 log.error("Could not load headers", ex);
@@ -244,27 +235,26 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
             if(clipboardContent == null) {
                 return;
             }
-            String[] clipboardLines = clipboardContent.split("\n"); // $NON-NLS-1$
+            String[] clipboardLines = clipboardContent.split(CLIPBOARD_LINE_DELIMITER); // $NON-NLS-1$
             for (String clipboardLine : clipboardLines) {
-                int index = clipboardLine.indexOf(":"); // $NON-NLS-1$
+                int index = clipboardLine.indexOf(CLIPBOARD_COLON_DELIMITER); // $NON-NLS-1$
                 if(index < 0) {
                     // when pasting from another header panel the values are separated with '\t'
-                    index = clipboardLine.indexOf("\t");
+                    index = clipboardLine.indexOf(CLIPBOARD_TAB_DELIMITER);
                 }
                 if (index > 0) {
-                    Header header = new Header(clipboardLine.substring(0, index), clipboardLine.substring(index+1));
+                    Header header = new Header(clipboardLine.substring(0, index).trim(), clipboardLine.substring(index+1).trim());
                     headerManager.add(header);
                 }
             }
             tableModel.fireTableDataChanged();
             if (headerTable.getRowCount() > rowCount) {
-                deleteButton.setEnabled(true);
-                saveButton.setEnabled(true);
-
                 // Highlight (select) the appropriate rows.
                 int rowToSelect = tableModel.getRowCount() - 1;
                 headerTable.setRowSelectionInterval(rowCount, rowToSelect);
             }
+
+            checkButtonsStatus();
         } catch (IOException ioe) {
             JOptionPane.showMessageDialog(this,
                     "Could not add read headers from clipboard:\n" + ioe.getLocalizedMessage(), "Error",
@@ -275,13 +265,13 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
                             + " from clipboard" + ufe.getLocalizedMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
-    
+
     public JPanel createHeaderTablePanel() {
         // create the JTable that holds header per row
         headerTable = new JTable(tableModel);
         JMeterUtils.applyHiDPI(headerTable);
         headerTable.getTableHeader().setDefaultRenderer(new HeaderAsPropertyRenderer());
-        headerTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        headerTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         headerTable.setPreferredScrollableViewportSize(new Dimension(100, 70));
 
         JPanel panel = new JPanel(new BorderLayout(0, 5));
@@ -302,7 +292,7 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
     }
 
     private JPanel createButtonPanel() {
-        boolean tableEmpty = (tableModel.getRowCount() == 0);
+        boolean tableEmpty = tableModel.getRowCount() == 0;
 
         JButton addButton = createButton("add", 'A', ADD_COMMAND, true); // $NON-NLS-1$
         deleteButton = createButton("delete", 'D', DELETE_COMMAND, !tableEmpty); // $NON-NLS-1$
@@ -357,25 +347,16 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
             return manager.getHeaders().size();
         }
 
-        /**
-         * Required by table model interface.
-         */
         @Override
         public int getColumnCount() {
             return manager.getColumnCount();
         }
 
-        /**
-         * Required by table model interface.
-         */
         @Override
         public String getColumnName(int column) {
             return manager.getColumnName(column);
         }
 
-        /**
-         * Required by table model interface.
-         */
         @Override
         public Object getValueAt(int row, int column) {
             Header head = manager.getHeader(row);
@@ -387,9 +368,6 @@ public class HeaderPanel extends AbstractConfigGui implements ActionListener
             return null;
         }
 
-        /**
-         * Required by table model interface.
-         */
         @Override
         public void setValueAt(Object value, int row, int column) {
             Header header = manager.getHeader(row);

@@ -13,26 +13,38 @@ Which jars are used by which modules?
 ====================================
 [not exhaustive]
 
-avalon-framework-4.1.4 (org.apache.avalon.framework)
+asm-7.0 (org.ow2.asm)
 ----------------------
-- LogKit (LoggingManager)
-- Configuration (DataSourceElement)
-- OldSaveService
+- JSON Path extractor
+
+accessors-smart-1.2 (net.minidev)
+----------------------
+- JSON Path extractor
 
 bsf-2.4.0.jar (org.apache.bsf)
 -------------
 http://jakarta.apache.org/site/downloads/downloads_bsf.cgi
 - BSF test elements (sampler etc.)
 
-bsh-2.0b5.jar (org.bsh)
+bsh-2.0b6.jar (org.bsh)
 -------------
 - BeanShell test elements
 
-commons-codec-1.10
+dec-0.1.2 (org.brotli.dec)
+-----------------
+https://github.com/google/brotli/tree/master/java/org/brotli
+- Used by HTTP4 HC Impl for brotli decoding
+
+caffeine 2.6.2
+-----------------
+https://github.com/ben-manes/caffeine/
+- Used by CssParser
+- Used by JMS Publisher Sampler
+
+commons-codec-1.11
 -----------------
 http://commons.apache.org/downloads/download_codec.cgi
-- used by commons-httpclient-3.1
-- also HtmlParserTester for Base64
+- Used by ProxyControl and JSR223Test Element for Base64 and md5 
 
 commons-collections-3.2.2
 -------------------------
@@ -40,18 +52,12 @@ http://commons.apache.org/downloads/download_collections.cgi
 - ListenerNotifier
 - Anakia
 
-commons-httpclient-3.1
-----------------------
-http://hc.apache.org/downloads.cgi
-- httpclient version of HTTP sampler
-- Cookie manager implementation
-
-commons-io-2.4
+commons-io-2.6
 --------------
 http://commons.apache.org/downloads/download_io.cgi
 - FTPSampler
 
-commons-jexl-1.1, commons-jexl-2.1.1, commons-jexl3-3.0
+commons-jexl-2.1.1, commons-jexl3-3.1
 ----------------
 http://commons.apache.org/downloads/download_jexl.cgi
 - Jexl function and BSF test elements
@@ -61,41 +67,42 @@ commons-lang-2.6
 http://commons.apache.org/downloads/download_lang.cgi
 - velocity (Anakia)
 
-commons-lang3-3.4
+commons-lang3-3.8.1
 ----------------
 http://commons.apache.org/downloads/download_lang.cgi
 - URLCollection (unescapeXml)
 
-commons-logging-1.2
----------------------
-http://commons.apache.org/downloads/download_logging.cgi
-- httpclient
-
-commons-math3-3.5
+commons-math3-3.6.1
 -----------------
 http://commons.apache.org/proper/commons-math/download_math.cgi
 - BackendListener
 
-commons-net-3.4
+commons-net-3.6
 -----------------
 http://commons.apache.org/downloads/download_net.cgi
 - FTPSampler
 
-commons-pool2-2.4.2
+commons-pool2-2.6.0
 -----------------
 http://commons.apache.org/proper/commons-pool/download_pool.cgi
 - BackendListener
 
-dnsjava-2.1.7
+commons-text-1.1
+-----------------
+https://commons.apache.org/proper/commons-text/
+- Random Strings
+
+darcula
+-----------------
+https://github.com/bulenkov/Darcula/
+- Look and Feel
+
+dnsjava-2.1.8
 -----------------
 http://www.dnsjava.org/download/
 - DNSCacheManager
 
-excalibur-logger-1.1 (org.apache.avalon.excalibur.logger)
---------------------
-- LoggingManager
-
-groovy-all-2.4.6
+groovy-all-2.4.16
 ----------------------
 Advised scripting language for JSR223 Test Elements
 
@@ -104,9 +111,26 @@ hamcrest-core-1.3
 - unit tests, JUnit sampler
 https://github.com/hamcrest/JavaHamcrest
 
-freemarker-2.3.23.jar
+freemarker-2.3.28.jar
 ----------------------
 - used by Report/Dashboard feature
+
+javax.activation-api-1.2.0.jar
+----------------------
+- used by SMTP Sampler
+
+javax.activation-1.2.0.jar
+----------------------
+- used by SMTP Sampler
+
+jackson-annotations-2.9.8 (com.fasterxml.jackson)
+----------------------
+
+Used by JsonExporter in report generator (com.fasterxml.jackson)
+----------------------
+jackson-annotations-2.9.8 (https://github.com/FasterXML/jackson-annotations)
+jackson-core-2.9.8 (https://github.com/FasterXML/jackson-core)
+jackson-databind-2.9.8 (https://github.com/FasterXML/jackson-databind)
 
 jCharts-0.7.5 (org.jCharts)
 -------------
@@ -118,46 +142,61 @@ jdom-1.1.3
 http://www.jdom.org/downloads/index.html
 - Anakia
 
-jodd-core-3.6.7
+jodd-core-5.0.6
 --------
 http://www.jodd.org/
 - CSS/JQuery like extractor dependency
 
-jodd-lagarto-3.6.7
+jodd-lagarto-5.0.6
 --------
 http://jodd.org/doc/csselly/
 - CSS/JQuery like extractor
 
-jodd-log-3.6.7
+jodd-log-5.0.6
 --------
 http://www.jodd.org/
 - CSS/JQuery like extractor dependency
 
-jodd-props-3.6.7
+jodd-props-5.0.6
 --------
 http://www.jodd.org/
 - used by Report/Dashboard feature properties management
 
-json-path-2.1.0
+json-path-2.4.0
 --------
 https://github.com/jayway/JsonPath
 - JSON Path Extractor
 - JSON Path Renderer
 
-json-smart-2.2.1
+json-smart-2.3 (net.minidev)
 --------
 https://github.com/netplex/json-smart-v2
 - JSON Path Extractor
 - JSON Path Renderer
 
-jsoup-1.8.3
+jsoup-1.11.3
 --------
 http://www.jsoup.org/
 - CSS/JQuery like extractor
 
-rhino-1.7.7.1
+log4j2-2.11.1
 --------
-http://www.mozilla.org/rhino/download.html
+https://logging.apache.org/log4j/2.x/
+- Logging framework
+
+ph-css-6.1.1
+--------
+https://github.com/phax/ph-css
+- CssParser
+
+ph-commons-9.2.0
+--------
+https://github.com/phax/ph-commons
+- CssParser
+
+rhino-1.7.10
+--------
+https://developer.mozilla.org/en-US/docs/Mozilla/Projects/Rhino/Download_Rhino
 - javascript function
 - IfController
 - WhileController
@@ -173,15 +212,15 @@ junit 4.12
 -----------
 - unit tests, JUnit sampler
 
-HttpComponents (HttpComponents Core 4.4.x and HttpComponents Client 4.5.x)
+HttpComponents
+- HttpComponents Core 4.4.10
+- HttpComponents Client 4.5.6
+- HttpComponents AsyncClient 4.1.4
+- HttpComponents Core NIO 4.4.10
 -----------
 http://hc.apache.org/
-- httpclient 4 implementation for HTTP sampler 
-
-logkit-2.0
-----------
-- logging
-- Anakia
+- httpclient 4 implementation for HTTP sampler
+- httpasyncclient implementation for InfluxDB Backend Listener Client
 
 mongo-java-driver 2.11.3
 ------------------------
@@ -193,7 +232,7 @@ oro-2.0.8
 http://jakarta.apache.org/site/downloads/downloads_oro.cgi
 - regular expressions: various
 
-rsyntaxtextarea-2.5.8
+rsyntaxtextarea-3.0.2
 ---------------------
 http://fifesoft.com/rsyntaxtextarea/
 - syntax coloration
@@ -203,19 +242,24 @@ serialiser-2.7.1
 http://www.apache.org/dyn/closer.cgi/xml/xalan-j
 - xalan
 
-slf4j-api-1.7.13, slf4j-nop-1.7.13
+slf4j-api-1.7.25
 ----------------
 http://www.slf4j.org/
 - jodd-core
+- json-path
 
-tika-1.12
+tika-1.20
 --------------
 http://tika.apache.org/
 - Regular Expression Extractor
 
-commons-dbcp2-2.1.1 (org.apache.commons.dbcp2)
+commons-dbcp2-2.5.0 (org.apache.commons.dbcp2)
 --------------------------
 - DataSourceElement (JDBC)
+
+Saxon-HE-9.8.0-14 (net.sf.saxon)
+--------------------------
+- XPath2Extractor (XML)
 
 velocity-1.7
 --------------
@@ -227,7 +271,7 @@ xalan_2.7.1
 http://www.apache.org/dyn/closer.cgi/xml/xalan-j
 +org.apache.xalan|xml|xpath
 
-xercesimpl-2.11.0
+xercesImpl-2.12.0
 ----------------
 http://xerces.apache.org/xerces2-j/download.cgi
 +org.apache.html.dom|org.apache.wml|org.apache.xerces|org.apache.xml.serialize
@@ -242,13 +286,25 @@ http://xerces.apache.org/xerces2-j/download.cgi
 
 The x* jars above are used for XML handling
 
-xmlgraphics-commons-2.0.1 (org.apache.xmlgraphics.image.codec)
+xmlgraphics-commons-2.3 (org.apache.xmlgraphics.image.codec)
 ------------------
 http://xmlgraphics.apache.org/commons/download.html
 - SaveGraphicsService
 
+xmlpull-1.1.3.1
+---------------
+http://www.xmlpull.org/impls.shtml
+- xstream
 
-xstream-1.4.8
+
+xpp3_min-1.1.4c
+---------------
+http://x-stream.github.io/download.html
+or
+http://www.extreme.indiana.edu/dist/java-repository/xpp3/distributions/
+- xstream
+
+xstream-1.4.11
 -------------
 http://x-stream.github.io/download.html
 - SaveService

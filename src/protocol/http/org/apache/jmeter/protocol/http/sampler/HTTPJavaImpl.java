@@ -26,8 +26,12 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.commons.io.input.CountingInputStream;
@@ -43,8 +47,8 @@ import org.apache.jmeter.testelement.property.CollectionProperty;
 import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jmeter.util.SSLManager;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A sampler which understands all the parts necessary to read statistics about
@@ -55,15 +59,14 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
     private static final boolean OBEY_CONTENT_LENGTH =
         JMeterUtils.getPropDefault("httpsampler.obey_contentlength", false); // $NON-NLS-1$
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HTTPJavaImpl.class);
 
     private static final int MAX_CONN_RETRIES =
         JMeterUtils.getPropDefault("http.java.sampler.retries" // $NON-NLS-1$
                 ,0); // Maximum connection retries
 
     static {
-        log.info("Maximum connection retries = "+MAX_CONN_RETRIES); // $NON-NLS-1$
-        // Temporary copies, so can set the final ones
+        log.info("Maximum connection retries = {}", MAX_CONN_RETRIES); // $NON-NLS-1$
     }
 
     private static final byte[] NULL_BA = new byte[0];// can share these
@@ -146,11 +149,6 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         if (proxyHost.length() > 0 && proxyPort > 0){
             Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
             //TODO - how to define proxy authentication for a single connection?
-            // It's not clear if this is possible
-//            String user = getProxyUser();
-//            if (user.length() > 0){
-//                Authenticator auth = new ProxyAuthenticator(user, getProxyPass());
-//            }
             conn = (HttpURLConnection) u.openConnection(proxy);
         } else {
             conn = (HttpURLConnection) u.openConnection();
@@ -183,6 +181,9 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         // with the last request to an HTTP server. Instead, most browsers
         // leave it to the server to close the connection after their
         // timeout period. Leave it to the JMeter user to decide.
+        // Ensure System property "sun.net.http.allowRestrictedHeaders=true" is set to true to allow headers 
+        // such as "Host" and "Connection" to be passed through.
+        // See http://bugs.java.com/bugdatabase/view_bug.do?bug_id=6996110
         if (getUseKeepAlive()) {
             conn.setRequestProperty(HTTPConstants.HEADER_CONNECTION, HTTPConstants.KEEP_ALIVE);
         } else {
@@ -193,7 +194,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         setConnectionHeaders(conn, u, getHeaderManager(), getCacheManager());
         String cookies = setConnectionCookie(conn, u, getCookieManager());
 
-        setConnectionAuthorization(conn, u, getAuthManager());
+        Map<String, String> securityHeaders = setConnectionAuthorization(conn, u, getAuthManager());
 
         if (method.equals(HTTPConstants.POST)) {
             setPostHeaders(conn);
@@ -202,8 +203,14 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         }
 
         if (res != null) {
-            res.setRequestHeaders(getConnectionHeaders(conn));
-            res.setCookies(cookies);
+            res.setRequestHeaders(getAllHeadersExceptCookie(conn, securityHeaders));
+            if(cookies != null && !cookies.isEmpty()) {
+                res.setCookies(cookies);
+            } else {
+                // During recording Cookie Manager doesn't handle cookies
+                res.setCookies(getOnlyCookieFromHeaders(conn, securityHeaders));
+                
+            }
         }
 
         return conn;
@@ -223,7 +230,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
     protected byte[] readResponse(HttpURLConnection conn, SampleResult res) throws IOException {
         BufferedInputStream in;
 
-        final int contentLength = conn.getContentLength();
+        final long contentLength = conn.getContentLength();
         if ((contentLength == 0)
             && OBEY_CONTENT_LENGTH) {
             log.info("Content-Length: 0, not reading http-body");
@@ -234,7 +241,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
 
         // works OK even if ContentEncoding is null
         boolean gzipped = HTTPConstants.ENCODING_GZIP.equals(conn.getContentEncoding());
-        InputStream instream = null;
+        CountingInputStream instream = null;
         try {
             instream = new CountingInputStream(conn.getInputStream());
             if (gzipped) {
@@ -245,10 +252,10 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         } catch (IOException e) {
             if (! (e.getCause() instanceof FileNotFoundException))
             {
-                log.error("readResponse: "+e.toString());
+                log.error("readResponse: {}", e.toString());
                 Throwable cause = e.getCause();
                 if (cause != null){
-                    log.error("Cause: "+cause);
+                    log.error("Cause: {}", cause.toString());
                     if(cause instanceof Error) {
                         throw (Error)cause;
                     }
@@ -257,13 +264,17 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             // Normal InputStream is not available
             InputStream errorStream = conn.getErrorStream();
             if (errorStream == null) {
-                log.info("Error Response Code: "+conn.getResponseCode()+", Server sent no Errorpage");
+                if(log.isInfoEnabled()) {
+                    log.info("Error Response Code: {}, Server sent no Errorpage", conn.getResponseCode());
+                }
                 res.setResponseHeaders(getResponseHeaders(conn));
                 res.latencyEnd();
                 return NULL_BA;
             }
 
-            log.info("Error Response Code: "+conn.getResponseCode());
+            if(log.isInfoEnabled()) {
+                log.info("Error Response Code: {}", conn.getResponseCode());
+            }
 
             if (gzipped) {
                 in = new BufferedInputStream(new GZIPInputStream(errorStream));
@@ -271,10 +282,10 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
                 in = new BufferedInputStream(errorStream);
             }
         } catch (Exception e) {
-            log.error("readResponse: "+e.toString());
+            log.error("readResponse: {}", e.toString());
             Throwable cause = e.getCause();
             if (cause != null){
-                log.error("Cause: "+cause);
+                log.error("Cause: {}", cause.toString());
                 if(cause instanceof Error) {
                     throw (Error)cause;
                 }
@@ -284,7 +295,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         // N.B. this closes 'in'
         byte[] responseData = readResponse(res, in, contentLength);
         if (instream != null) {
-            res.setBodySize(((CountingInputStream) instream).getCount());
+            res.setBodySize(instream.getByteCount());
             instream.close();
         }
         return responseData;
@@ -300,11 +311,6 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
     protected String getResponseHeaders(HttpURLConnection conn) {
         StringBuilder headerBuf = new StringBuilder();
         headerBuf.append(conn.getHeaderField(0));// Leave header as is
-        // headerBuf.append(conn.getHeaderField(0).substring(0, 8));
-        // headerBuf.append(" ");
-        // headerBuf.append(conn.getResponseCode());
-        // headerBuf.append(" ");
-        // headerBuf.append(conn.getResponseMessage());
         headerBuf.append("\n"); //$NON-NLS-1$
 
         String hfk;
@@ -355,40 +361,78 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
      *            for this <code>UrlConfig</code>
      * @param cacheManager the CacheManager (may be null)
      */
-    private void setConnectionHeaders(HttpURLConnection conn, URL u, HeaderManager headerManager, CacheManager cacheManager) {
+    private void setConnectionHeaders(HttpURLConnection conn, URL u, 
+            HeaderManager headerManager, CacheManager cacheManager) {
         // Add all the headers from the HeaderManager
+        Header[] arrayOfHeaders = null;
         if (headerManager != null) {
             CollectionProperty headers = headerManager.getHeaders();
             if (headers != null) {
+                int i=0;
+                arrayOfHeaders = new Header[headers.size()];
                 for (JMeterProperty jMeterProperty : headers) {
                     Header header = (Header) jMeterProperty.getObjectValue();
                     String n = header.getName();
                     String v = header.getValue();
+                    arrayOfHeaders[i++] = header;
                     conn.addRequestProperty(n, v);
                 }
             }
         }
         if (cacheManager != null){
-            cacheManager.setHeaders(conn, u);
+            cacheManager.setHeaders(conn, arrayOfHeaders, u);
         }
     }
 
+    /**
+     * Get only the Cookie headers for the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param securityHeaders Map of security Header
+     * @return the headers as a string
+     */
+    private String getOnlyCookieFromHeaders(HttpURLConnection conn, Map<String, String> securityHeaders) {
+        String cookieHeader= getFromConnectionHeaders(conn, securityHeaders, ONLY_COOKIE, false).trim();
+        if(!cookieHeader.isEmpty()) {
+            return cookieHeader.substring((HTTPConstants.HEADER_COOKIE_IN_REQUEST).length(), cookieHeader.length()).trim();
+        }
+        return "";
+    }
+    
     /**
      * Get all the headers for the <code>HttpURLConnection</code> passed in
      *
      * @param conn
      *            <code>HttpUrlConnection</code> which represents the URL
      *            request
+     * @param securityHeaders Map of security Header
      * @return the headers as a string
      */
-    private String getConnectionHeaders(HttpURLConnection conn) {
+    private String getAllHeadersExceptCookie(HttpURLConnection conn, Map<String, String> securityHeaders) {
+        return getFromConnectionHeaders(conn, securityHeaders, ALL_EXCEPT_COOKIE, true);
+    }
+    
+    /**
+     * Get all the headers for the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param securityHeaders Map of security Header
+     * @param predicate {@link Predicate} 
+     * @return the headers as a string
+     */
+    private String getFromConnectionHeaders(HttpURLConnection conn, Map<String, String> securityHeaders,
+            Predicate<String> predicate, boolean addSecurityHeaders) {
         // Get all the request properties, which are the headers set on the connection
         StringBuilder hdrs = new StringBuilder(100);
         Map<String, List<String>> requestHeaders = conn.getRequestProperties();
         for(Map.Entry<String, List<String>> entry : requestHeaders.entrySet()) {
             String headerKey=entry.getKey();
             // Exclude the COOKIE header, since cookie is reported separately in the sample
-            if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(headerKey)) {
+            if(predicate.test(headerKey)) {
                 // value is a List of Strings
                 for (String value : entry.getValue()){
                     hdrs.append(headerKey);
@@ -396,6 +440,12 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
                     hdrs.append(value);
                     hdrs.append("\n"); // $NON-NLS-1$
                 }
+            }
+        }
+        if(addSecurityHeaders) {
+            for(Map.Entry<String, String> entry : securityHeaders.entrySet()) {
+                hdrs.append(entry.getKey()).append(": ") // $NON-NLS-1$
+                    .append(entry.getValue()).append("\n"); // $NON-NLS-1$
             }
         }
         return hdrs.toString();
@@ -413,14 +463,22 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
      * @param authManager
      *            the <code>AuthManager</code> containing all the cookies for
      *            this <code>UrlConfig</code>
+     * @return String Authorization header value or null if not set
      */
-    private void setConnectionAuthorization(HttpURLConnection conn, URL u, AuthManager authManager) {
+    private Map<String, String> setConnectionAuthorization(HttpURLConnection conn, URL u, AuthManager authManager) {
         if (authManager != null) {
             Authorization auth = authManager.getAuthForURL(u);
             if (auth != null) {
-                conn.setRequestProperty(HTTPConstants.HEADER_AUTHORIZATION, auth.toBasicHeader());
+                String headerValue = auth.toBasicHeader();
+                conn.setRequestProperty(HTTPConstants.HEADER_AUTHORIZATION, headerValue);
+                // Java hides request properties so we have to 
+                // keep trace of it
+                Map<String, String> map = new HashMap<>(1);
+                map.put(HTTPConstants.HEADER_AUTHORIZATION, headerValue);
+                return map;
             }
         }
+        return Collections.emptyMap();
     }
 
     /**
@@ -448,14 +506,13 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
 
         String urlStr = url.toString();
         if (log.isDebugEnabled()) {
-            log.debug("Start : sample " + urlStr);
-            log.debug("method " + method+ " followingRedirect " + areFollowingRedirect + " depth " + frameDepth);            
+            log.debug("Start : sample {}, method {}, followingRedirect {}, depth {}",
+                    urlStr, method, areFollowingRedirect, frameDepth);
         }
 
         HTTPSampleResult res = new HTTPSampleResult();
-        res.setMonitor(isMonitor());
 
-        res.setSampleLabel(urlStr);
+        res.setSampleLabel(this.testElement.getName());
         res.setURL(url);
         res.setHTTPMethod(method);
 
@@ -464,7 +521,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
         // Check cache for an entry with an Expires header in the future
         final CacheManager cacheManager = getCacheManager();
         if (cacheManager != null && HTTPConstants.GET.equalsIgnoreCase(method)) {
-           if (cacheManager.inCache(url)) {
+           if (cacheManager.inCache(url, getHeaders(getHeaderManager()))) {
                return updateSampleResultForResourceInCache(res);
            }
         }
@@ -483,7 +540,7 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
                     break;
                 } catch (BindException e) {
                     if (retry >= MAX_CONN_RETRIES) {
-                        log.error("Can't connect after "+retry+" retries, "+e);
+                        log.error("Can't connect after {} retries, message: {}", retry, e.toString());
                         throw e;
                     }
                     log.debug("Bind exception, try again");
@@ -529,13 +586,13 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
                 if (respMsg != null) {// Bug 41902 - NPE
                     try {
                         errorLevel = Integer.parseInt(respMsg.substring(0, 3));
-                        log.warn("ResponseCode==-1; parsed "+respMsg+ " as "+errorLevel);
+                        log.warn("ResponseCode==-1; parsed {} as {}", respMsg, errorLevel);
                       } catch (NumberFormatException e) {
-                        log.warn("ResponseCode==-1; could not parse "+respMsg+" hdr: "+hdr);
+                        log.warn("ResponseCode==-1; could not parse {} hdr: {}", respMsg, hdr);
                       }
                 } else {
                     respMsg=hdr; // for result
-                    log.warn("ResponseCode==-1 & null ResponseMessage. Header(0)= "+hdr);
+                    log.warn("ResponseCode==-1 & null ResponseMessage. Header(0)= {} ", hdr);
                 }
             }
             if (errorLevel == -1) {
@@ -566,8 +623,9 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
                     .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
             if (log.isDebugEnabled()) {
-                log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
-                        + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+                log.debug("Response headersSize={}, bodySize={}, Total={}",
+                        res.getHeadersSize(),  res.getBodySizeAsLong(),
+                        res.getHeadersSize() + res.getBodySizeAsLong());
             }
             
             // If we redirected automatically, the URL may have changed
@@ -588,7 +646,9 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             log.debug("End : sample");
             return res;
         } catch (IOException e) {
-            res.sampleEnd();
+            if (res.getEndTime() == 0) {
+                res.sampleEnd();
+            }
             savedConn = null; // we don't want interrupt to try disconnection again
             // We don't want to continue using this connection, even if KeepAlive is set
             if (conn != null) { // May not exist
@@ -603,6 +663,20 @@ public class HTTPJavaImpl extends HTTPAbstractImpl {
             savedConn = null; // we don't want interrupt to try disconnection again
             disconnect(conn); // Disconnect unless using KeepAlive
         }
+    }
+
+    private Header[] getHeaders(HeaderManager headerManager) {
+        if (headerManager != null) {
+            final CollectionProperty headers = headerManager.getHeaders();
+            if (headers != null) {
+                final List<Header> allHeaders = new ArrayList<>(headers.size());
+                for (final JMeterProperty jMeterProperty : headers) {
+                    allHeaders.add((Header) jMeterProperty.getObjectValue());
+                }
+                return allHeaders.toArray(new Header[allHeaders.size()]);
+            }
+        }
+        return new Header[0];
     }
 
     protected void disconnect(HttpURLConnection conn) {

@@ -41,7 +41,6 @@ import org.apache.jmeter.testelement.TestElement;
  * @see org.apache.jmeter.samplers.gui.AbstractSamplerGui
  *
  */
-
 public interface JMeterGUIComponent extends ClearGui {
 
     /**
@@ -84,7 +83,7 @@ public interface JMeterGUIComponent extends ClearGui {
      * the component's label in the local language. The resource name is fixed,
      * and does not vary with the selected language.
      *
-     * Normally this method should be overriden in preference to overriding
+     * Normally this method should be overridden in preference to overriding
      * getStaticLabel(). However where the resource name is not available or required,
      * getStaticLabel() may be overridden instead.
      *
@@ -132,6 +131,7 @@ public interface JMeterGUIComponent extends ClearGui {
      * The canonical implementation looks like this:
      * <pre>
      * public void modifyTestElement(TestElement element) {
+     *     element.clear(); // many implementations use this
      *     configureTestElement(element);
      *     // Using the element setters (preferred):
      *     TestElementXYZ xyz = (TestElementXYZ) element;
@@ -220,4 +220,12 @@ public interface JMeterGUIComponent extends ClearGui {
      * @see org.apache.jmeter.gui.util.MenuFactory
      */
     Collection<String> getMenuCategories();
+
+    /**
+     * Returns whether a component of this type can be added to the test plan.
+     * @return true if the component can be added, false otherwise.
+     */
+    default boolean canBeAdded() {
+        return true;
+    }
 }

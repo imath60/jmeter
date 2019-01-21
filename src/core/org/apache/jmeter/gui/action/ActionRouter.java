@@ -21,10 +21,17 @@ package org.apache.jmeter.gui.action;
 import java.awt.HeadlessException;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.security.CodeSource;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.swing.SwingUtilities;
@@ -32,13 +39,13 @@ import javax.swing.SwingUtilities;
 import org.apache.jmeter.exceptions.IllegalUserActionException;
 import org.apache.jmeter.gui.GuiPackage;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.reflect.ClassFinder;
 import org.apache.jorphan.util.JMeterError;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ActionRouter implements ActionListener {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(ActionRouter.class);
 
     // This is cheap, so no need to resort to IODH or lazy init
     private static final ActionRouter INSTANCE = new ActionRouter();
@@ -51,27 +58,28 @@ public final class ActionRouter implements ActionListener {
     private final Map<String, Set<ActionListener>> postActionListeners =
             new HashMap<>();
 
+    // New action will clear undo, no point in having a transaction. Same with open
+    // EMI: XXX: Commands could also have an annotation to sigal the Undo preference
+    private final List<String> NO_TRANSACTION_ACTIONS = Arrays.asList(ActionNames.CLOSE, ActionNames.OPEN, ActionNames.OPEN_RECENT);
+
     private ActionRouter() {
     }
 
     @Override
     public void actionPerformed(final ActionEvent e) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                performAction(e);
-            }
-
-        });
+        SwingUtilities.invokeLater(() -> performAction(e));
     }
 
     private void performAction(final ActionEvent e) {
         String actionCommand = e.getActionCommand();
+        if(!NO_TRANSACTION_ACTIONS.contains(actionCommand)) {
+            GuiPackage.getInstance().beginUndoTransaction();
+        }
         try {
             try {
                 GuiPackage.getInstance().updateCurrentGui();
             } catch (Exception err){
-                log.error("performAction(" + actionCommand + ") updateCurrentGui() on" + e.toString() + " caused", err);
+                log.error("performAction({}) updateCurrentGui() on{} caused", actionCommand, e, err);
                 JMeterUtils.reportErrorToUser("Problem updating GUI - see log file for details");
             }
             for (Command c : commands.get(actionCommand)) {
@@ -94,12 +102,16 @@ public final class ActionRouter implements ActionListener {
                     }
                     JMeterUtils.reportErrorToUser(msg);
                 } catch (Exception err) {
-                    log.error("Error processing "+c.toString(), err);
+                    log.error("Error processing {}", c, err);
                 }
             }
         } catch (NullPointerException er) {
-            log.error("performAction(" + actionCommand + ") " + e.toString() + " caused", er);
+            log.error("performAction({}) {} caused", actionCommand, e, er);
             JMeterUtils.reportErrorToUser("Sorry, this feature (" + actionCommand + ") not yet implemented");
+        } finally {
+            if(!NO_TRANSACTION_ACTIONS.contains(actionCommand)) {
+                GuiPackage.getInstance().endUndoTransaction();
+            }
         }
     }
 
@@ -205,9 +217,10 @@ public final class ActionRouter implements ActionListener {
     }
 
     /**
+     * Remove listener from actionsListeners associated to action
      * @param action {@link Class}
-     * @param e {@link ActionListener}
-     * @param actionListeners {@link Set}
+     * @param listener {@link ActionListener}
+     * @param actionListeners {@link Set} of {@link ActionListener}
      */
     private void removeActionListener(Class<?> action, ActionListener listener, Map<String, Set<ActionListener>> actionListeners) {
         if (action != null) {
@@ -236,7 +249,7 @@ public final class ActionRouter implements ActionListener {
 
     /**
      * @param action {@link Class}
-     * @param list {@link ActionListener}
+     * @param listener {@link ActionListener}
      * @param actionListeners {@link Set}
      */
     private void addActionListener(Class<?> action, ActionListener listener, Map<String, Set<ActionListener>> actionListeners) {
@@ -288,13 +301,41 @@ public final class ActionRouter implements ActionListener {
     private void actionPerformed(Class<? extends Command> action, ActionEvent e, Map<String, Set<ActionListener>> actionListeners) {
         if (action != null) {
             Set<ActionListener> listenerSet = actionListeners.get(action.getName());
-            if (listenerSet != null && listenerSet.size() > 0) {
+            if (listenerSet != null && !listenerSet.isEmpty()) {
                 ActionListener[] listeners = listenerSet.toArray(new ActionListener[listenerSet.size()]);
                 for (ActionListener listener : listeners) {
                     listener.actionPerformed(e);
                 }
             }
         }
+    }
+
+    private static List<String> findClassesThatExtend(String className, String excluding, String[] searchPath) throws IOException, ClassNotFoundException {
+
+        return ClassFinder.findClassesThatExtend(
+                searchPath, // strPathsOrJars - pathNames or jar files to search for classes
+                new Class[] { Class.forName(className) },
+                false, // innerClasses - should we include inner classes?
+                null, // contains - className should contain this string
+                // Ignore the classes which are specific to the reporting tool
+                excluding, // notContains - className should not contain this string
+                false); // annotations - true if classNames are annotations
+    }
+
+    private static Optional<String[]> getCodeSourceSearchPath() {
+        CodeSource codeSource = ActionRouter.class.getProtectionDomain().getCodeSource();
+        if (codeSource != null) {
+            try {
+                URL ownLocation = codeSource.getLocation();
+                File ownPath = new File(ownLocation.toURI());
+                if (ownPath.exists()) {
+                    return Optional.of(new String[] { ownPath.getAbsolutePath() });
+                }
+            } catch (URISyntaxException ex) {
+                log.debug("Can't get location for class sources", ex);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -307,33 +348,37 @@ public final class ActionRouter implements ActionListener {
             return; // already done
         }
         try {
-            List<String> listClasses = ClassFinder.findClassesThatExtend(
-                    JMeterUtils.getSearchPaths(), // strPathsOrJars - pathnames or jarfiles to search for classes
-                    // classNames - required parent class(es) or annotations
-                    new Class[] {Class.forName("org.apache.jmeter.gui.action.Command") }, // $NON-NLS-1$
-                    false, // innerClasses - should we include inner classes?
-                    null, // contains - classname should contain this string
-                    // Ignore the classes which are specific to the reporting tool
-                    "org.apache.jmeter.report.gui", // $NON-NLS-1$ // notContains - classname should not contain this string
-                    false); // annotations - true if classnames are annotations
+            List<String> listClasses = findClassesThatExtend("org.apache.jmeter.gui.action.Command", // $NON-NLS-1$
+                    "org.apache.jmeter.report.gui", // $NON-NLS-1$
+                    JMeterUtils.getSearchPaths());
+
             if (listClasses.isEmpty()) {
-                log.fatalError("!!!!!Uh-oh, didn't find any action handlers!!!!!");
+                //fallback
+                Optional<String[]> codeSourceSearchPath = getCodeSourceSearchPath();
+                if (codeSourceSearchPath.isPresent()) {
+                    log.info("Using fallback search path");
+                    listClasses = findClassesThatExtend("org.apache.jmeter.gui.action.Command", // $NON-NLS-1$
+                            "org.apache.jmeter.report.gui", // $NON-NLS-1$
+                            codeSourceSearchPath.get());
+                }
+            }
+
+            if (listClasses.isEmpty()) {
+                log.error("!!!!!Uh-oh, didn't find any action handlers!!!!!");
                 throw new JMeterError("No action handlers found - check JMeterHome and libraries");
             }
             for (String strClassName : listClasses) {
                 Class<?> commandClass = Class.forName(strClassName);
-                Command command = (Command) commandClass.newInstance();
+                Command command = (Command) commandClass.getDeclaredConstructor().newInstance();
                 for (String commandName : command.getActionNames()) {
-                    Set<Command> commandObjects = commands.get(commandName);
-                    if (commandObjects == null) {
-                        commandObjects = new HashSet<>();
-                        commands.put(commandName, commandObjects);
-                    }
+                    Set<Command> commandObjects = commands.computeIfAbsent(commandName, k -> new HashSet<>());
                     commandObjects.add(command);
                 }
             }
-        } catch (HeadlessException e){
-            log.warn(e.toString());
+        } catch (HeadlessException e) {
+            if (log.isWarnEnabled()) {
+                log.warn("AWT headless exception occurred. {}", e.toString());
+            }
         } catch (Exception e) {
             log.error("exception finding action handlers", e);
         }
@@ -348,3 +393,4 @@ public final class ActionRouter implements ActionListener {
         return INSTANCE;
     }
 }
+

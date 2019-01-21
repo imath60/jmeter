@@ -30,6 +30,7 @@ import javax.swing.JRadioButton;
 import javax.swing.JTextField;
 
 import org.apache.jmeter.assertions.SizeAssertion;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jorphan.gui.layout.VerticalLayout;
@@ -37,6 +38,7 @@ import org.apache.jorphan.gui.layout.VerticalLayout;
 /**
  * GUI for {@link SizeAssertion}
  */
+@GUIMenuSortOrder(3)
 public class SizeAssertionGui extends AbstractAssertionGui implements ActionListener {
 
     private static final long serialVersionUID = 241L;
@@ -58,8 +60,12 @@ public class SizeAssertionGui extends AbstractAssertionGui implements ActionList
 
     private JTextField size;
 
-    private JRadioButton equalButton, notequalButton, greaterthanButton, lessthanButton, greaterthanequalButton,
-            lessthanequalButton;
+    private JRadioButton equalButton;
+    private JRadioButton notequalButton;
+    private JRadioButton greaterthanButton;
+    private JRadioButton lessthanButton;
+    private JRadioButton greaterthanequalButton;
+    private JRadioButton lessthanequalButton;
 
     private int execState; // store the operator
 

@@ -21,8 +21,6 @@ package org.apache.jmeter.extractor.gui;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
 import java.util.List;
 
 import javax.swing.BorderFactory;
@@ -34,6 +32,7 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 
 import org.apache.jmeter.extractor.RegexExtractor;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.processor.gui.AbstractPostProcessorGui;
 import org.apache.jmeter.testelement.AbstractScopedTestElement;
 import org.apache.jmeter.testelement.TestElement;
@@ -43,37 +42,24 @@ import org.apache.jorphan.gui.JLabeledTextField;
 /**
  * Regular Expression Extractor Post-Processor GUI
  */
+@GUIMenuSortOrder(4)
 public class RegexExtractorGui extends AbstractPostProcessorGui {
     private static final long serialVersionUID = 240L;
 
     private JLabeledTextField regexField;
-
     private JLabeledTextField templateField;
-
     private JLabeledTextField defaultField;
-
     private JLabeledTextField matchNumberField;
-
     private JLabeledTextField refNameField;
-
     private JRadioButton useBody;
-
     private JRadioButton useUnescapedBody;
-
     private JRadioButton useBodyAsDocument;
-
     private JRadioButton useHeaders;
-
     private JRadioButton useRequestHeaders;
-
     private JRadioButton useURL;
-
     private JRadioButton useCode;
-
     private JRadioButton useMessage;
-
     private ButtonGroup group;
-    
     private JCheckBox emptyDefaultValue;
 
     public RegexExtractorGui() {
@@ -241,15 +227,11 @@ public class RegexExtractorGui extends AbstractPostProcessorGui {
         JPanel p = new JPanel(new BorderLayout());
         p.add(item.get(1), BorderLayout.WEST);
         emptyDefaultValue = new JCheckBox(JMeterUtils.getResString("assertion_regex_empty_default_value")); //$NON-NLS-1$
-        emptyDefaultValue.addItemListener(new ItemListener() {
-            
-            @Override
-            public void itemStateChanged(ItemEvent e) {
-                if(emptyDefaultValue.isSelected()) {
-                    defaultField.setText(""); //$NON-NLS-1$
-                }
-                defaultField.setEnabled(!emptyDefaultValue.isSelected());
+        emptyDefaultValue.addItemListener(evt -> {
+            if(emptyDefaultValue.isSelected()) {
+                defaultField.setText(""); //$NON-NLS-1$
             }
+            defaultField.setEnabled(!emptyDefaultValue.isSelected());
         });
         
         p.add(emptyDefaultValue, BorderLayout.CENTER);

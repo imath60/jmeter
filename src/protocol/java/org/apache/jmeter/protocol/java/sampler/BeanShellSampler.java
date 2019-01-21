@@ -24,6 +24,7 @@ import java.util.Set;
 
 import org.apache.jmeter.config.ConfigTestElement;
 import org.apache.jmeter.engine.util.ConfigMergabilityIndicator;
+import org.apache.jmeter.gui.GUIMenuSortOrder;
 import org.apache.jmeter.samplers.Entry;
 import org.apache.jmeter.samplers.Interruptible;
 import org.apache.jmeter.samplers.SampleResult;
@@ -31,22 +32,23 @@ import org.apache.jmeter.samplers.Sampler;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.BeanShellInterpreter;
 import org.apache.jmeter.util.BeanShellTestElement;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JMeterException;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A sampler which understands BeanShell
  *
  */
+@GUIMenuSortOrder(Integer.MAX_VALUE)
 public class BeanShellSampler extends BeanShellTestElement implements Sampler, Interruptible, ConfigMergabilityIndicator
 {
     private static final Set<String> APPLIABLE_CONFIG_CLASSES = new HashSet<>(
             Arrays.asList("org.apache.jmeter.config.gui.SimpleConfigGui"));
     
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(BeanShellSampler.class);
 
-    private static final long serialVersionUID = 3;
+    private static final long serialVersionUID = 4;
 
     public static final String FILENAME = "BeanShellSampler.filename"; //$NON-NLS-1$
 
@@ -88,7 +90,6 @@ public class BeanShellSampler extends BeanShellTestElement implements Sampler, I
     @Override
     public SampleResult sample(Entry e)// Entry tends to be ignored ...
     {
-        // log.info(getLabel()+" "+getFilename());
         SampleResult res = new SampleResult();
         boolean isSuccessful = false;
         res.setSampleLabel(getName());
@@ -142,13 +143,15 @@ public class BeanShellSampler extends BeanShellTestElement implements Sampler, I
          */
         // but we do trap this error to make tests work better
         catch (NoClassDefFoundError ex) {
-            log.error("BeanShell Jar missing? " + ex.toString());
+            log.error("BeanShell Jar missing? {}", ex.toString());
             res.setResponseCode("501");//$NON-NLS-1$
             res.setResponseMessage(ex.toString());
             res.setStopThread(true); // No point continuing
         } catch (Exception ex) // Mainly for bsh.EvalError
         {
-            log.warn(ex.toString());
+            if (log.isWarnEnabled()) {
+                log.warn("Exception executing script. {}", ex.toString());
+            }
             res.setResponseCode("500");//$NON-NLS-1$
             res.setResponseMessage(ex.toString());
         } finally {
@@ -169,7 +172,9 @@ public class BeanShellSampler extends BeanShellTestElement implements Sampler, I
             try {
                 savedBsh.evalNoLog("interrupt()"); // $NON-NLS-1$
             } catch (JMeterException ignored) {
-                log.debug(getClass().getName() + " : " + ignored.getLocalizedMessage()); // $NON-NLS-1$
+                if (log.isDebugEnabled()) {
+                    log.debug("{} : {}", getClass(), ignored.getLocalizedMessage()); // $NON-NLS-1$
+                }
             }
             return true;
         }

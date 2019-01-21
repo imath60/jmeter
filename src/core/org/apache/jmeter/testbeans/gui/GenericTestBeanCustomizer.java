@@ -42,8 +42,8 @@ import org.apache.commons.lang3.ClassUtils;
 import org.apache.jmeter.gui.ClearGui;
 import org.apache.jmeter.testbeans.TestBeanHelper;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The GenericTestBeanCustomizer is designed to provide developers with a
@@ -95,9 +95,9 @@ import org.apache.log.Logger;
  * </dl>
  */
 public class GenericTestBeanCustomizer extends JPanel implements SharedCustomizer {
-    private static final long serialVersionUID = 240L;
+    private static final long serialVersionUID = 241L;
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(GenericTestBeanCustomizer.class);
 
     // Need to register Editors for Java classes because we cannot create them
     // in the same package, nor can we create them in the built-in search patch of packages,
@@ -140,6 +140,9 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
 
     /** Default value, must be provided if {@link #NOT_UNDEFINED} is TRUE */
     public static final String DEFAULT = "default"; //$NON-NLS-1$
+
+    /** Default value is not saved; only non-defaults are saved */
+    public static final String DEFAULT_NOT_SAVED = "defaultNoSave"; //$NON-NLS-1$
 
     /** Pointer to the resource bundle, if any (will generally be null) */
     public static final String RESOURCE_BUNDLE = "resourceBundle"; //$NON-NLS-1$
@@ -199,9 +202,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
     }
     /**
      * Create a customizer for a given test bean type.
-     *
-     * @param testBeanClass
-     *            a subclass of TestBean
+     * @param beanInfo {@link BeanInfo}
      * @see org.apache.jmeter.testbeans.TestBean
      */
     GenericTestBeanCustomizer(BeanInfo beanInfo) {
@@ -223,7 +224,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
 
             // Don't get editors for hidden or non-read-write properties:
             if (TestBeanHelper.isDescriptorIgnored(descriptor)) {
-                log.debug("Skipping editor for property " + name);
+                log.debug("Skipping editor for property {}", name);
                 editors[i] = null;
                 continue;
             }
@@ -238,14 +239,12 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                     propertyEditor = new EnumEditor(descriptor, enumClass, (ResourceBundle) descriptor.getValue(GenericTestBeanCustomizer.RESOURCE_BUNDLE));
             } else {
                 Class<?> editorClass = descriptor.getPropertyEditorClass();
-                if (log.isDebugEnabled()) {
-                    log.debug("Property " + name + " has editor class " + editorClass);
-                }
-    
+                log.debug("Property {} has editor class {}", name, editorClass);
+
                 if (editorClass != null) {
                     try {
-                        propertyEditor = (PropertyEditor) editorClass.newInstance();
-                    } catch (InstantiationException | IllegalAccessException e) {
+                        propertyEditor = (PropertyEditor) editorClass.getDeclaredConstructor().newInstance();
+                    } catch (ReflectiveOperationException e) {
                         log.error("Can't create property editor.", e);
                         throw new Error(e.toString());
                     }
@@ -256,26 +255,21 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
             }
             
             if (propertyEditor == null) {
-                log.warn("No editor for property: " + name 
-                        + " type: " + descriptor.getPropertyType()
-                        + " in bean: " + beanInfo.getBeanDescriptor().getDisplayName()
-                        );
+                if (log.isWarnEnabled()) {
+                    log.warn("No editor for property: {} type: {} in bean: {}", name, descriptor.getPropertyType(),
+                            beanInfo.getBeanDescriptor().getDisplayName());
+                }
                 editors[i] = null;
                 continue;
             }
 
-            if (log.isDebugEnabled()) {
-                log.debug("Property " + name + " has property editor " + propertyEditor);
-            }
+            log.debug("Property {} has property editor {}", name, propertyEditor);
 
             validateAttributes(descriptor, propertyEditor);
 
             if (!propertyEditor.supportsCustomEditor()) {
                 propertyEditor = createWrapperEditor(propertyEditor, descriptor);
-
-                if (log.isDebugEnabled()) {
-                    log.debug("Editor for property " + name + " is wrapped in " + propertyEditor);
-                }
+                log.debug("Editor for property {} is wrapped in {}", name, propertyEditor);
             }
             if(propertyEditor instanceof TestBeanPropertyEditor)
             {
@@ -325,27 +319,42 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
         final Object deflt = pd.getValue(DEFAULT);
         if (deflt == null) {
             if (notNull(pd)) {
-                log.warn(getDetails(pd) + " requires a value but does not provide a default.");
-            }            
+                if (log.isWarnEnabled()) {
+                    log.warn("{} requires a value but does not provide a default.", getDetails(pd));
+                }
+            }
+            if (noSaveDefault(pd)) {
+                if (log.isWarnEnabled()) {
+                    log.warn("{} specifies DEFAULT_NO_SAVE but does not provide a default.", getDetails(pd));
+                }
+            }
         } else {
             final Class<?> defltClass = deflt.getClass(); // the DEFAULT class
             // Convert int to Integer etc:
             final Class<?> propClass = ClassUtils.primitiveToWrapper(pd.getPropertyType());
             if (!propClass.isAssignableFrom(defltClass) ){
-                log.warn(getDetails(pd) + " has a DEFAULT of class " + defltClass.getCanonicalName());
+                if (log.isWarnEnabled()) {
+                    log.warn("{} has a DEFAULT of class {}", getDetails(pd), defltClass.getCanonicalName());
+                }
             }            
         }
         if (notOther(pd) && pd.getValue(TAGS) == null && pe.getTags() == null) {
-            log.warn(getDetails(pd) + " does not have tags but other values are not allowed.");
+            if (log.isWarnEnabled()) {
+                log.warn("{} does not have tags but other values are not allowed.", getDetails(pd));
+            }
         }
         if (!notNull(pd)) {
             Class<?> propertyType = pd.getPropertyType();
             if (propertyType.isPrimitive()) {
-                log.warn(getDetails(pd) + " allows null but is a primitive type");
+                if (log.isWarnEnabled()) {
+                    log.warn("{} allows null but is a primitive type", getDetails(pd));
+                }
             }
         }
         if (!pd.attributeNames().hasMoreElements()) {
-            log.warn(getDetails(pd) + " does not appear to have been configured");            
+            if (log.isWarnEnabled()) {
+                log.warn("{} does not appear to have been configured", getDetails(pd));
+            }
         }
     }
 
@@ -356,14 +365,9 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
      * @return the property details
      */
     private static String getDetails(PropertyDescriptor pd) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(pd.getReadMethod().getDeclaringClass().getName());
-        sb.append('#');
-        sb.append(pd.getName());
-        sb.append('(');
-        sb.append(pd.getPropertyType().getCanonicalName());
-        sb.append(')');
-        return sb.toString();
+        return pd.getReadMethod().getDeclaringClass().getName() + '#'
+                + pd.getName() + '(' + pd.getPropertyType().getCanonicalName()
+                + ')';
     }
 
     /**
@@ -377,7 +381,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
     private WrapperEditor createWrapperEditor(PropertyEditor typeEditor, PropertyDescriptor descriptor) {
         String[] editorTags = typeEditor.getTags();
         String[] additionalTags = (String[]) descriptor.getValue(TAGS);
-        String[] tags = null;
+        String[] tags;
         if (editorTags == null) {
             tags = additionalTags;
         } else if (additionalTags == null) {
@@ -405,13 +409,11 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                     (ResourceBundle) descriptor.getValue(GenericTestBeanCustomizer.RESOURCE_BUNDLE));
         }
 
-        WrapperEditor wrapper = new WrapperEditor(typeEditor, guiEditor,
+        return new WrapperEditor(typeEditor, guiEditor,
                 !notNull, // acceptsNull
                 !notExpression, // acceptsExpressions
                 !notOther, // acceptsOther
                 descriptor.getValue(DEFAULT));
-
-        return wrapper;
     }
 
     /**
@@ -422,8 +424,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
      *  otherwise the default is false
      */
     static boolean notOther(PropertyDescriptor descriptor) {
-        boolean notOther = Boolean.TRUE.equals(descriptor.getValue(NOT_OTHER));
-        return notOther;
+        return Boolean.TRUE.equals(descriptor.getValue(NOT_OTHER));
     }
 
     /**
@@ -434,8 +435,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
      *  otherwise the default is false
      */
     static boolean notExpression(PropertyDescriptor descriptor) {
-        boolean notExpression = Boolean.TRUE.equals(descriptor.getValue(NOT_EXPRESSION));
-        return notExpression;
+        return Boolean.TRUE.equals(descriptor.getValue(NOT_EXPRESSION));
     }
 
     /**
@@ -446,8 +446,18 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
      *  otherwise the default is false
      */
     static boolean notNull(PropertyDescriptor descriptor) {
-        boolean notNull = Boolean.TRUE.equals(descriptor.getValue(NOT_UNDEFINED));
-        return notNull;
+        return Boolean.TRUE.equals(descriptor.getValue(NOT_UNDEFINED));
+    }
+
+    /**
+     * Returns true if the property default value is not saved
+     * 
+     * @param descriptor the property descriptor
+     * @return true if the attribute {@link #DEFAULT_NOT_SAVED} is defined and equal to Boolean.TRUE;
+     *  otherwise the default is false
+     */
+    static boolean noSaveDefault(PropertyDescriptor descriptor) {
+        return Boolean.TRUE.equals(descriptor.getValue(DEFAULT_NOT_SAVED));
     }
 
     /**
@@ -477,14 +487,14 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
     public void setObject(Object map) {
         propertyMap = (Map<String, Object>) map;
 
-        if (propertyMap.size() == 0) {
+        if (propertyMap.isEmpty()) {
             // Uninitialized -- set it to the defaults:
             for (PropertyDescriptor descriptor : descriptors) {
                 Object value = descriptor.getValue(DEFAULT);
                 String name = descriptor.getName();
                 if (value != null) {
                     propertyMap.put(name, value);
-                    log.debug("Set " + name + "= " + value);
+                    log.debug("Set {}={}", name, value);
                 }
                 firePropertyChange(name, null, value);
             }
@@ -503,11 +513,11 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                 // incorrect value with anything valid, e.g. the default value
                 // for the property.
                 // But for the time being, I just prefer to be aware of any
-                // problems occuring here, most likely programming errors,
+                // problems occurring here, most likely programming errors,
                 // so I'll bail out.
                 // (MS Note) Can't bail out - newly create elements have blank
                 // values and must get the defaults.
-                // Also, when loading previous versions of jmeter test scripts,
+                // Also, when loading previous versions of JMeter test scripts,
                 // some values
                 // may not be right, and should get default values - MS
                 // TODO: review this and possibly change to:
@@ -515,24 +525,6 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
             }
         }
     }
-
-//  /**
-//   * Find the index of the property of the given name.
-//   *
-//   * @param name
-//   *            the name of the property
-//   * @return the index of that property in the descriptors array, or -1 if
-//   *         there's no property of this name.
-//   */
-//  private int descriptorIndex(String name) // NOTUSED
-//  {
-//      for (int i = 0; i < descriptors.length; i++) {
-//          if (descriptors[i].getName().equals(name)) {
-//              return i;
-//          }
-//      }
-//      return -1;
-//  }
 
     /**
      * Initialize the GUI.
@@ -568,7 +560,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
             }
 
             if (log.isDebugEnabled()) {
-                log.debug("Laying property " + descriptors[i].getName());
+                log.debug("Laying property {}", descriptors[i].getName());
             }
 
             String g = group(descriptors[i]);
@@ -633,8 +625,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
         // if the displayName is the empty string, leave it like that.
         JLabel label = new JLabel(text);
         label.setHorizontalAlignment(SwingConstants.TRAILING);
-        text = propertyToolTipMessage.format(new Object[] { desc.getName(), desc.getShortDescription() });
-        label.setToolTipText(text);
+        label.setToolTipText(propertyToolTipMessage.format(new Object[] { desc.getShortDescription() }));
 
         return label;
     }
@@ -661,7 +652,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
         if (b == null) {
             return group;
         }
-        String key = new StringBuilder(group).append(".displayName").toString();
+        String key = group + ".displayName";
         if (b.containsKey(key)) {
             return b.getString(key);
         } else {
@@ -682,12 +673,12 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
 
         @Override
         public int compare(PropertyDescriptor d1, PropertyDescriptor d2) {
-            int result;
+            String g1 = group(d1);
+            String g2 = group(d2);
+            Integer go1 = groupOrder(g1);
+            Integer go2 = groupOrder(g2);
 
-            String g1 = group(d1), g2 = group(d2);
-            Integer go1 = groupOrder(g1), go2 = groupOrder(g2);
-
-            result = go1.compareTo(go2);
+            int result = go1.compareTo(go2);
             if (result != 0) {
                 return result;
             }
@@ -697,7 +688,8 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                 return result;
             }
 
-            Integer po1 = propertyOrder(d1), po2 = propertyOrder(d2);
+            Integer po1 = propertyOrder(d1);
+            Integer po2 = propertyOrder(d2);
             result = po1.compareTo(po2);
             if (result != 0) {
                 return result;
@@ -747,14 +739,10 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                 String name = descriptors[i].getName();
                 if (value == null) {
                     propertyMap.remove(name);
-                    if (log.isDebugEnabled()) {
-                        log.debug("Unset " + name);
-                    }
+                    log.debug("Unset {}", name);
                 } else {
                     propertyMap.put(name, value);
-                    if (log.isDebugEnabled()) {
-                        log.debug("Set " + name + "= " + value);
-                    }
+                    log.debug("Set {}={}", name, value);
                 }
             }
         }
@@ -779,7 +767,7 @@ public class GenericTestBeanCustomizer extends JPanel implements SharedCustomize
                     propertyEditor.setAsText("");
                 }
                 } catch (IllegalArgumentException ex){
-                    log.error("Failed to set field "+descriptors[i].getName(),ex);
+                    log.error("Failed to set field {}", descriptors[i].getName(), ex);
                 }
             }
         }

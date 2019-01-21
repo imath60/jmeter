@@ -28,8 +28,8 @@ import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 
 import org.apache.jmeter.exceptions.IllegalUserActionException;
-import org.apache.jmeter.gui.JMeterGUIComponent;
 import org.apache.jmeter.gui.GuiPackage;
+import org.apache.jmeter.gui.JMeterGUIComponent;
 import org.apache.jmeter.gui.util.FileDialoger;
 import org.apache.jmeter.save.SaveGraphicsService;
 import org.apache.jmeter.util.JMeterUtils;
@@ -43,7 +43,7 @@ import org.apache.jmeter.visualizers.Printable;
  * file if no extension is provided. If either .png or .tif is in the filename,
  * it will call SaveGraphicsService to save in the format.
  */
-public class SaveGraphics implements Command {
+public class SaveGraphics extends AbstractAction {
 
     private static final Set<String> commands = new HashSet<>();
 
@@ -86,16 +86,17 @@ public class SaveGraphics implements Command {
         }
         if (e.getActionCommand().equals(ActionNames.SAVE_GRAPHICS_ALL)) {
             JMeterGUIComponent component = GuiPackage.getInstance().getCurrentGui();
-            JComponent comp=((JComponent) component).getRootPane();
+            JComponent comp = ((JComponent) component).getRootPane();
             saveImage(comp);
         }
     }
 
-    private void saveImage(JComponent comp){
+    private void saveImage(JComponent comp) {
 
         String filename;
-        JFileChooser chooser = FileDialoger.promptToSaveFile(GuiPackage.getInstance().getTreeListener()
-                .getCurrentNode().getName(), extensions);
+        JFileChooser chooser = FileDialoger.promptToSaveFile(
+                GuiPackage.getInstance().getTreeListener().getCurrentNode().getName(),
+                extensions);
         if (chooser == null) {
             return;
         }
@@ -104,14 +105,14 @@ public class SaveGraphics implements Command {
         filename = chooser.getSelectedFile().getAbsolutePath();
         if (filename != null) {
             File f = new File(filename);
-            if(f.exists()) {
+            if (f.exists()) {
                 int response = JOptionPane.showConfirmDialog(GuiPackage.getInstance().getMainFrame(),
                         JMeterUtils.getResString("save_overwrite_existing_file"), // $NON-NLS-1$
                         JMeterUtils.getResString("save?"),  // $NON-NLS-1$
                         JOptionPane.YES_NO_OPTION,
                         JOptionPane.QUESTION_MESSAGE);
                 if (response == JOptionPane.CLOSED_OPTION || response == JOptionPane.NO_OPTION) {
-                    return ; // Do not save, user does not want to overwrite
+                    return; // Do not save, user does not want to overwrite
                 }
             }
             SaveGraphicsService save = new SaveGraphicsService();
@@ -125,6 +126,5 @@ public class SaveGraphics implements Command {
                 save.saveJComponent(filename, SaveGraphicsService.PNG, comp);
             }
         }
-
     }
 }

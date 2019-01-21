@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -33,10 +34,8 @@ import java.util.zip.GZIPInputStream;
 
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.testelement.TestElement;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
-
-// For JUnit tests, @see TestTCLogParser
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Description:<br>
@@ -74,7 +73,7 @@ import org.apache.log.Logger;
  */
 
 public class TCLogParser implements LogParser {
-    protected static final Logger log = LoggingManager.getLoggerForClass();
+    protected static final Logger log = LoggerFactory.getLogger(TCLogParser.class);
 
     /*
      * TODO should these fields be public?
@@ -83,7 +82,7 @@ public class TCLogParser implements LogParser {
      * Also, are they any different from HTTPConstants.GET etc. ?
      * In some cases they seem to be used as the method name from the Tomcat log.
      * However the RMETHOD field is used as the value for HTTPSamplerBase.METHOD,
-     * for which HTTPConstants is most approriate.
+     * for which HTTPConstants is most appropriate.
      */
     public static final String GET = "GET";
 
@@ -94,9 +93,7 @@ public class TCLogParser implements LogParser {
     /** protected members * */
     protected String RMETHOD = null;
 
-    /**
-     * The path to the access log file
-     */
+    /** The path to the access log file */
     protected String URL_PATH = null;
 
     protected boolean useFILE = true;
@@ -107,21 +104,14 @@ public class TCLogParser implements LogParser {
 
     protected BufferedReader READER = null;
 
-    /**
-     * Handles to supporting classes
-     */
+    /** Handles to supporting classes */
     protected Filter FILTER = null;
 
-    /**
-     * by default, we probably should decode the parameter values
-     */
+    /** by default, we probably should decode the parameter values */
     protected boolean decode = true;
 
     // TODO downcase UPPER case non-final variables
 
-    /**
-     *
-     */
     public TCLogParser() {
         super();
     }
@@ -269,9 +259,6 @@ public class TCLogParser implements LogParser {
             if (line == null) {
                 breader.close();
                 this.READER = null;
-                // this.READER = new BufferedReader(new
-                // FileReader(this.SOURCE));
-                // parse(this.READER,el);
             }
         } catch (IOException ioe) {
             log.error("Error reading log file", ioe);
@@ -358,23 +345,18 @@ public class TCLogParser implements LogParser {
      */
     public String cleanURL(String entry) {
         String url = entry;
-        // if the string contains atleast one double
-        // quote and checkMethod is true, go ahead
-        // and tokenize the string.
-        if (entry.indexOf('"') > -1 && checkMethod(entry)) {
-            StringTokenizer tokens = null;
+        if (entry.contains("\"") && checkMethod(entry)) {
             // we tokenize using double quotes. this means
             // for tomcat we should have 3 tokens if there
             // isn't any additional information in the logs
-            tokens = this.tokenize(entry, "\"");
+            StringTokenizer tokens = this.tokenize(entry, "\"");
             while (tokens.hasMoreTokens()) {
-                String toke = tokens.nextToken();
-                // if checkMethod on the token is true
-                // we tokenzie it using space and escape
-                // the while loop. Only the first matching
-                // token will be used
-                if (checkMethod(toke)) {
-                    StringTokenizer token2 = this.tokenize(toke, " ");
+                String token = tokens.nextToken();
+                if (checkMethod(token)) {
+                    // we tokenzie it using space and escape
+                    // the while loop. Only the first matching
+                    // token will be used
+                    StringTokenizer token2 = this.tokenize(token, " ");
                     while (token2.hasMoreTokens()) {
                         String t = (String) token2.nextElement();
                         if (t.equalsIgnoreCase(GET)) {
@@ -425,14 +407,14 @@ public class TCLogParser implements LogParser {
     /**
      * Tokenize the URL into two tokens. If the URL has more than one "?", the
      * parse may fail. Only the first two tokens are used. The first token is
-     * automatically parsed and set at {@link TCLogParser#URL_PATH URL_PATH}.
+     * automatically parsed and set at TCLogParser#URL_PATH.
      *
      * @param url url which should be stripped from parameters
      * @param el {@link TestElement} to parse url into
      * @return String presenting the parameters, or <code>null</code> when none where found
      */
     public String stripFile(String url, TestElement el) {
-        if (url.indexOf('?') > -1) {
+        if (url.contains("?")) {
             StringTokenizer tokens = this.tokenize(url, "?");
             this.URL_PATH = tokens.nextToken();
             el.setProperty(HTTPSamplerBase.PATH, URL_PATH);
@@ -451,10 +433,7 @@ public class TCLogParser implements LogParser {
      *         <code>false</code> otherwise
      */
     public boolean checkURL(String url) {
-        if (url.indexOf('?') > -1) {
-            return true;
-        }
-        return false;
+        return url.contains("?");
     }
 
     /**
@@ -466,16 +445,13 @@ public class TCLogParser implements LogParser {
      *         and <code>=</code>, <code>false</code> otherwise
      */
     public boolean checkParamFormat(String text) {
-        if (text.indexOf('&') > -1 && text.indexOf('=') > -1) {
-            return true;
-        }
-        return false;
+        return text.contains("&") && text.contains("=");
     }
 
     /**
      * Convert a single line into XML
      *
-     * @param text to be be converted
+     * @param text to be converted
      * @param el {@link HTTPSamplerBase} which consumes the <code>text</code>
      */
     public void convertStringToJMRequest(String text, TestElement el) {
@@ -528,7 +504,7 @@ public class TCLogParser implements LogParser {
         } else {
             if (decode) {
                 try {
-                    value = URLDecoder.decode(value,"UTF-8");
+                    value = URLDecoder.decode(value, StandardCharsets.UTF_8.name());
                 } catch (UnsupportedEncodingException e) {
                     log.warn(e.getMessage());
                 }

@@ -82,7 +82,7 @@
 <td bgcolor="$tabletdbg" #if ($colspan)colspan="$colspan"#end #if ($rowspan)rowspan="$rowspan"#end valign="top" align="left">
 <font color="#000000" size="-1" face="arial,helvetica,sanserif">
 #if ($value.getText().length() != 0 || $value.getChildren().size() > 0)
-$value.content
+#runloop($value)
 #else
 &nbsp;
 #end
@@ -133,7 +133,7 @@ $value.content
 #end
 
 #macro ( code $value)
-<tt class="code">$escape.getText($value.getText())</tt>
+<tt class="code">#runloop($value)</tt>##
 #end
 
 #macro ( source $value)
@@ -146,7 +146,7 @@ $value.content
 </tr>
 <tr>
 <td bgcolor="#023264" width="1"><img src="/images/void.gif" width="1" height="1" vspace="0" hspace="0" border="0"/></td>
-<td bgcolor="#ffffff"><pre>$escape.getText($value.getText())</pre></td>
+<td bgcolor="#ffffff"><pre>#runloop($value)</pre></td>
 <td bgcolor="#023264" width="1"><img src="/images/void.gif" width="1" height="1" vspace="0" hspace="0" border="0"/></td>
 </tr>
 <tr>
@@ -161,6 +161,7 @@ $value.content
 #macro (properties $properties)
 <p>
 <b>Parameters</b>
+</p>
 <table border="1" cellspacing="0" cellpadding="2">
 <tr><th>Attribute</th><th>Description</th><th>Required</th></tr>
 #foreach ($items in $properties.getChildren("property"))
@@ -177,21 +178,21 @@ No
 </tr>
 #end
 </table>
-</p>
 #end
 
 #macro (seeAlso $seeAlso)
-<p><b>See Also:</b>
+<p><b>See Also:</b></p>
 <ul>
 #foreach ($items in $seeAlso.getChildren())
 #if($items.getName() == "link")
 <li><a href="$items.getAttributeValue("href")">$xmlout.outputString($items,true)</a></li>
 #elseif($items.getName() == "complink")
 <li>#complink($items)</li>
+#elseif($items.getName() == "funclink")
+<li>#funclink($items)</li>
 #end
 #end
 </ul>
-</p>
 #end
 
 #macro (figure $figure)
@@ -203,8 +204,8 @@ No
 #if  ("$!width" != "")
 #set ($dim = "width='$width' height='$height'")
 #end
-<p><table border="0" cellspacing="0" cellpadding="0"><tr><td><img $dim src="$sshotdir/$figure.getAttributeValue("image")"/><br>
-<font size="-1">#runloop($figure)</font></td></tr></table></p>
+<table border="0" cellspacing="0" cellpadding="0"><tr><td><img $dim src="$sshotdir/$figure.getAttributeValue("image")"/><br>
+<font size="-1">#runloop($figure)</font></td></tr></table>
 #end
 
 #macro (example $example)
@@ -233,9 +234,26 @@ No
 <a href="https://bz.apache.org/bugzilla/show_bug.cgi?id=$id.getText()">Bug $id.getText()</a>
 #end
 
+#macro ( pullrequest $id)
+<a href="https://github.com/apache/jmeter/pull/$id.getText()">Pull request #$id.getText()</a>##
+#end
+
+#macro ( rfc $id)
+#if($id.getText())
+<a href="https://tools.ietf.org/html/rfc$id.getAttributeValue('link')">$id.getText()</a>##
+#else
+<a href="https://tools.ietf.org/html/rfc$id.getAttributeValue('link')">RFC $id.getAttributeValue('link')</a>##
+#end
+#end
+
 ## Shorthand - automatically adds " - " before remaining text
 #macro ( bug $id)
 #bugzilla($id) - ##
+#end
+
+## Shorthand - automatically adds " - " before remaining text
+#macro ( pr $id)
+#pullrequest($id) - ##
 #end
 
 #macro ( contributor $id)
@@ -257,11 +275,17 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
 <tr><td><font color="white" face="Helvetica, Arial, sans-serif">$title.getText()</font></td></tr></table>
 #end
 
+#macro (description $node)
+<div class="description">#runloop($node)</div>
+#end
+
 #macro (unknown $node)
 #if($node.getName() == "note")
 #note($node)
 #elseif($node.getName() == "complink")
 #complink($node)
+#elseif($node.getName() == "funclink")
+#funclink($node)
 #elseif($node.getName() == "figure")
 #figure($node)
 #elseif ($node.getName() == "links")
@@ -286,6 +310,10 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
 #bugzilla ($node)
 #elseif ($node.getName().equals("bug"))
 #bug ($node)
+#elseif ($node.getName().equals("pr"))
+#pr ($node)
+#elseif ($node.getName().equals("rfc"))
+#rfc ($node)
 #elseif ($node.getName().equals("contributor"))
 #contributor ($node)
 #elseif ($node.getName().equals("ch_section"))
@@ -304,6 +332,8 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
 #keysym ($node)
 #elseif ($node.getName().equals("guimenuitem"))
 #guimenuitem ($node)
+#elseif ($node.getName().equals("description"))
+#description ($node)
 #else
 #outputTag($node)
 #runloop($node)
@@ -312,19 +342,23 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
 #end
 
 #macro (complink $complink)
-<a href="$relativePath/usermanual/component_reference.html#$complink.getAttributeValue("name").replace($space,$udsc)">$complink.getAttributeValue("name")</a>
+<a href="$relativePath/usermanual/component_reference.html#$complink.getAttributeValue("name").replace($space,$udsc)">$complink.getAttributeValue("name")</a>##
+#end
+
+#macro (funclink $funclink)
+<a href="$relativePath/usermanual/functions.html#$funclink.getAttributeValue("name").replace($space,$udsc).replace("(","").replace(")","")">$funclink.getAttributeValue("name")</a>##
 #end
 
 #macro (outputTag $tag)
-<$tag.getName()#getAtts($tag)>
+<$tag.getName()#getAtts($tag)>##
 #end
 
 #macro (getAtts $tag)
-#foreach ($att in $tag.getAttributes()) $att.getName()="$att.getValue()"#end
+#foreach ($att in $tag.getAttributes()) $att.getName()="$att.getValue()"#end##
 #end
 
 #macro (outputEndTag $tag)
-</$tag.getName()>
+</$tag.getName()>##
 #end
 
 #macro (menuchoice $items)
@@ -349,9 +383,9 @@ Contributed by $id.getAttributeValue("name") &lt;$id.getAttributeValue("mail")&g
 #macro (runloop $itemToLoop)
 #foreach ($node in $itemToLoop.getContent())
 #if($node.getClass().getName().indexOf("Element") > -1)
-#unknown($node)
+#unknown($node)##
 #else
-$node.getText()
+$escape.getText($node.getText())##
 #end
 #end
 #end
@@ -498,7 +532,7 @@ $node.getText()
 </ul></td><td valign="top"><ul>
 #end
 <li><a href="#$sect.getAttributeValue("anchor")">$sect.getAttributeValue("name")</a></li>
-#if ("$!level2" != "no")
+#if ("$!level2" != "no" and !$sect.getChildren().isEmpty())
 <ul>
 #foreach ($comp in $sect.getChildren("component"))
 <li>
@@ -527,7 +561,7 @@ $comp.getAttributeValue("index")
 #set ( $logoHeight = $project.getChild("logo").getAttributeValue("height") )
 #set ( $logoWidth  = $project.getChild("logo").getAttributeValue("width") )
 <td align="left">
-<a href="http://www.apache.org"><img style="margin: 0px 30px 0px 0px" title="Apache Software Foundation" width="215" height="88" src="$imgdir/asf-logo.png" border="0"/></a>
+<a href="http://www.apache.org"><img style="margin: 0px 30px 0px 0px" title="Apache Software Foundation" width="261" height="106" src="$imgdir/asf-logo.png" border="0"/></a>
 </td>
 <td align="right">
 #if ( $logoString.startsWith("/") )
@@ -538,7 +572,7 @@ $comp.getAttributeValue("index")
 </td>
 #else
 <td colspan="2">
-<a href="http://www.apache.org"><img title="Apache Software Foundation" width="215" height="88" src="$imgdir/asf-logo.png" border="0"/></a>
+<a href="http://www.apache.org"><img title="Apache Software Foundation" width="261" height="106" src="$imgdir/asf-logo.png" border="0"/></a>
 </td>
 #end
 #end

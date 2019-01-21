@@ -30,12 +30,14 @@ import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.testbeans.BeanInfoSupport;
 import org.apache.jmeter.testbeans.gui.TypeEditor;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.util.JMeterUtils;
+import org.apache.jorphan.util.JOrphanUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DataSourceElementBeanInfo extends BeanInfoSupport {
-    private static final Logger log = LoggingManager.getLoggerForClass();
-    private static Map<String,Integer> TRANSACTION_ISOLATION_MAP = new HashMap<>(5);
+    private static final Logger log = LoggerFactory.getLogger(DataSourceElementBeanInfo.class);
+    private static final Map<String,Integer> TRANSACTION_ISOLATION_MAP = new HashMap<>(5);
     static {
         // Will use default isolation
         TRANSACTION_ISOLATION_MAP.put("DEFAULT", Integer.valueOf(-1));
@@ -52,7 +54,7 @@ public class DataSourceElementBeanInfo extends BeanInfoSupport {
         createPropertyGroup("varName", new String[] { "dataSource" });
 
         createPropertyGroup("pool", new String[] { "poolMax", "timeout", 
-                "trimInterval", "autocommit", "transactionIsolation"  });
+                "trimInterval", "autocommit", "transactionIsolation", "initQuery"  });
 
         createPropertyGroup("keep-alive", new String[] { "keepAlive", "connectionAge", "checkQuery" });
 
@@ -63,7 +65,7 @@ public class DataSourceElementBeanInfo extends BeanInfoSupport {
         p.setValue(DEFAULT, "");
         p = property("poolMax");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
-        p.setValue(DEFAULT, "10");
+        p.setValue(DEFAULT, "0");
         p = property("timeout");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "10000");
@@ -80,21 +82,26 @@ public class DataSourceElementBeanInfo extends BeanInfoSupport {
         Set<String> modesSet = TRANSACTION_ISOLATION_MAP.keySet();
         String[] modes = modesSet.toArray(new String[modesSet.size()]);
         p.setValue(TAGS, modes);
+        p = property("initQuery", TypeEditor.TextAreaEditor);
+        p.setValue(NOT_UNDEFINED, Boolean.TRUE);
+        p.setValue(DEFAULT, "");
         p = property("keepAlive");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, Boolean.TRUE);
         p = property("connectionAge");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "5000");
-        p = property("checkQuery");
+        p = property("checkQuery", TypeEditor.ComboStringEditor);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
-        p.setValue(DEFAULT, "Select 1");
+        p.setValue(DEFAULT, "");
+        p.setValue(TAGS, getListCheckQuery());
         p = property("dbUrl");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");
-        p = property("driver");
+        p = property("driver", TypeEditor.ComboStringEditor);
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");
+        p.setValue(TAGS, getListJDBCDriverClass());
         p = property("username");
         p.setValue(NOT_UNDEFINED, Boolean.TRUE);
         p.setValue(DEFAULT, "");
@@ -109,7 +116,7 @@ public class DataSourceElementBeanInfo extends BeanInfoSupport {
      * <dl>
      * <dt>DEFAULT</dt><dd>-1</dd>
      * <dt>TRANSACTION_NONE</dt><dd>{@value java.sql.Connection#TRANSACTION_NONE}</dd>
-     * <dt>TRANSACTION_REAd_COMMITTED</dt><dd>{@value java.sql.Connection#TRANSACTION_READ_COMMITTED}</dd>
+     * <dt>TRANSACTION_READ_COMMITTED</dt><dd>{@value java.sql.Connection#TRANSACTION_READ_COMMITTED}</dd>
      * <dt>TRANSACTION_READ_UNCOMMITTED</dt><dd>{@value java.sql.Connection#TRANSACTION_READ_UNCOMMITTED}</dd>
      * <dt>TRANSACTION_REPEATABLE_READ</dt><dd>{@value java.sql.Connection#TRANSACTION_REPEATABLE_READ}</dd>
      * <dt>TRANSACTION_SERIALIZABLE</dt><dd>{@value java.sql.Connection#TRANSACTION_SERIALIZABLE}</dd>
@@ -126,8 +133,28 @@ public class DataSourceElementBeanInfo extends BeanInfoSupport {
                 } catch (NumberFormatException e) {
                     log.warn("Illegal transaction isolation configuration '" + tag + "'");
                 }
+            } else {
+                return isolationMode.intValue();
             }
         }
         return -1;
     }
+
+    /**
+     * Get the list of JDBC driver classname for the main databases
+     * @return a String[] with the list of JDBC driver classname
+     */
+    private String[] getListJDBCDriverClass() {
+        return JOrphanUtils.split(JMeterUtils.getPropDefault("jdbc.config.jdbc.driver.class", ""), "|"); //$NON-NLS-1$
+    }
+
+    /**
+     * Get the check queries for the main databases
+     * Based in https://stackoverflow.com/questions/10684244/dbcp-validationquery-for-different-databases
+     * @return a String[] with the list of check queries
+     */
+    private String[] getListCheckQuery() {
+        return JOrphanUtils.split(JMeterUtils.getPropDefault("jdbc.config.check.query", ""), "|"); //$NON-NLS-1$
+    }
+
 }

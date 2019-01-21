@@ -19,23 +19,30 @@
 package org.apache.jmeter.gui.util;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
+import javax.swing.event.TableModelEvent;
 import javax.swing.table.DefaultTableModel;
 
 import org.apache.jorphan.collections.Data;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PowerTableModel extends DefaultTableModel {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(PowerTableModel.class);
 
-    private static final long serialVersionUID = 233L;
+    private static final long serialVersionUID = 234L;
 
     private Data model = new Data();
 
     private Class<?>[] columnClasses;
+
+    private static final List<Object> DEFAULT_ARGS = Collections.unmodifiableList(Arrays.asList("", Integer.valueOf(0),
+            Long.valueOf(0L), Boolean.FALSE, Float.valueOf(0F), Double.valueOf(0D), Character.valueOf(' '),
+            Byte.valueOf(Byte.MIN_VALUE), Short.valueOf(Short.MIN_VALUE)));
 
     public PowerTableModel(String[] headers, Class<?>[] classes) {
         if (headers.length != classes.length){
@@ -75,7 +82,7 @@ public class PowerTableModel extends DefaultTableModel {
 
     @Override
     public void removeRow(int row) {
-        log.debug("remove row: " + row);
+        log.debug("remove row: {}", row);
         if (model.size() > row) {
             log.debug("Calling remove row on Data");
             model.removeRow(row);
@@ -113,6 +120,26 @@ public class PowerTableModel extends DefaultTableModel {
         }
     }
 
+    @Override
+    public void moveRow(int start, int end, int to) {
+        ArrayList<Object[]> rows = new ArrayList<>();
+        for(int i=0; i < getRowCount(); i++){
+            rows.add(getRowData(i));
+        }
+
+        List<Object[]> subList = new ArrayList<>(rows.subList(start, end));
+        for (int x = end - 1; x >= start; x--) {
+            rows.remove(x);
+        }
+
+        rows.addAll(to, subList);
+        for(int i = 0; i < rows.size(); i++){
+            setRowValues(i, rows.get(i));
+        }
+
+        super.fireTableChanged(new TableModelEvent(this));
+    }
+
     public void addNewRow() {
         addRow(createDefaultRow());
     }
@@ -127,61 +154,22 @@ public class PowerTableModel extends DefaultTableModel {
 
     public Object[] getRowData(int row) {
         Object[] rowData = new Object[getColumnCount()];
-        for (int i = 0; i < rowData.length; i++) {
-            rowData[i] = model.getColumnValue(i, row);
-        }
+        Arrays.setAll(rowData, i -> model.getColumnValue(i, row));
         return rowData;
     }
 
-    private Object createDefaultValue(int i) {
+    private Object createDefaultValue(int i) { // CHECKSTYLE IGNORE ReturnCount
         Class<?> colClass = getColumnClass(i);
         try {
-            return colClass.newInstance();
+            return colClass.getDeclaredConstructor().newInstance();
         } catch (Exception e) {
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { String.class });
-                return constr.newInstance(new Object[] { "" });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Integer.TYPE });
-                return constr.newInstance(new Object[] { Integer.valueOf(0) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Long.TYPE });
-                return constr.newInstance(new Object[] { Long.valueOf(0L) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Boolean.TYPE });
-                return constr.newInstance(new Object[] { Boolean.FALSE });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Float.TYPE });
-                return constr.newInstance(new Object[] { Float.valueOf(0F) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Double.TYPE });
-                return constr.newInstance(new Object[] { Double.valueOf(0D) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Character.TYPE });
-                return constr.newInstance(new Object[] { Character.valueOf(' ') });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Byte.TYPE });
-                return constr.newInstance(new Object[] { Byte.valueOf(Byte.MIN_VALUE) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-            try {
-                Constructor<?> constr = colClass.getConstructor(new Class[] { Short.TYPE });
-                return constr.newInstance(new Object[] { Short.valueOf(Short.MIN_VALUE) });
-            } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {
+            for (Object initArg: DEFAULT_ARGS) {
+                try {
+                    Constructor<?> constr = colClass.getConstructor(initArg.getClass());
+                    return constr.newInstance(initArg);
+                } catch (ReflectiveOperationException ignored) {
+                    // no need to log this, as we are just trying out all available default args
+                }
             }
         }
         return "";

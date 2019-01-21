@@ -1,5 +1,4 @@
 /*
-
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -23,8 +22,8 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.jmeter.config.Arguments;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * BackendListenerContext is used to provide context information to a
@@ -44,8 +43,7 @@ public class BackendListenerContext {
      * teardownTest.
      */
 
-    /** Logging */
-    private static final Logger LOGGER = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(BackendListenerContext.class);
 
     /**
      * Map containing the initialization parameters for the BackendListenerClient.
@@ -53,7 +51,6 @@ public class BackendListenerContext {
     private final Map<String, String> params;
 
     /**
-     *
      * @param args
      *            the initialization parameters.
      */
@@ -126,12 +123,14 @@ public class BackendListenerContext {
      *            the name of the parameter whose value should be retrieved
      * @return the value of the parameter
      *
+     * @throws IllegalArgumentException
+     *             if no value defined
      * @throws NumberFormatException
      *             if the parameter is not specified or is not an integer
      *
      * @see java.lang.Integer#decode(java.lang.String)
      */
-    public int getIntParameter(String name) throws NumberFormatException {
+    public int getIntParameter(String name)  {
         if (params == null || !params.containsKey(name)) {
             throw new IllegalArgumentException("No value for parameter named '" + name + "'.");
         }
@@ -161,11 +160,12 @@ public class BackendListenerContext {
             return defaultValue;
         }
 
+        final String valueString = params.get(name);
         try {
-            return Integer.parseInt(params.get(name));
+            return Integer.parseInt(valueString);
         } catch (NumberFormatException e) {
-            LOGGER.warn("Value for parameter '" + name + "' not an integer: '" + params.get(name) + "'.  Using default: '"
-                    + defaultValue + "'.", e);
+            log.warn("Value for parameter '{}' not an integer: '{}'.  Using default: '{}'.", name, valueString,
+                    defaultValue, e);
             return defaultValue;
         }
     }
@@ -185,9 +185,9 @@ public class BackendListenerContext {
      *
      * @see Long#decode(String)
      */
-    public long getLongParameter(String name) throws NumberFormatException {
+    public long getLongParameter(String name) {
         if (params == null || !params.containsKey(name)) {
-            throw new NumberFormatException("No value for parameter named '" + name + "'.");
+            throw new IllegalArgumentException("No value for parameter named '" + name + "'.");
         }
 
         return Long.parseLong(params.get(name));
@@ -213,11 +213,12 @@ public class BackendListenerContext {
         if (params == null || !params.containsKey(name)) {
             return defaultValue;
         }
+        final String valueString = params.get(name);
         try {
-            return Long.decode(params.get(name)).longValue();
+            return Long.decode(valueString).longValue();
         } catch (NumberFormatException e) {
-            LOGGER.warn("Value for parameter '" + name + "' not a long: '" + params.get(name) + "'.  Using default: '"
-                    + defaultValue + "'.", e);
+            log.warn("Value for parameter '{}' not a long: '{}'.  Using default: '{}'.", name, valueString,
+                    defaultValue, e);
             return defaultValue;
         }
     }

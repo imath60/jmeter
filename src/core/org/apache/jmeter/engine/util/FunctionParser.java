@@ -29,8 +29,8 @@ import org.apache.jmeter.engine.StandardJMeterEngine;
 import org.apache.jmeter.functions.Function;
 import org.apache.jmeter.functions.InvalidVariableException;
 import org.apache.jmeter.testelement.TestStateListener;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Parses function / variable references of the form
@@ -39,7 +39,7 @@ import org.apache.log.Logger;
  * ${variableName}
  */
 class FunctionParser {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(FunctionParser.class);
 
     /**
      * Compile a general string into a list of elements for a CompoundVariable.
@@ -91,11 +91,11 @@ class FunctionParser {
                 result.add(buffer.toString());
             }
         } catch (IOException e) {
-            log.error("Error parsing function: " + value, e);
+            log.error("Error parsing function: {}", value, e);
             result.clear();
             result.add(value);
         }
-        if (result.size() == 0) {
+        if (result.isEmpty()) {
             result.add("");
         }
         return result;
@@ -136,8 +136,8 @@ class FunctionParser {
                             reader.reset();// set to start of string
                             char []cb = new char[100];
                             int nbRead = reader.read(cb);
-                            throw new InvalidVariableException
-                            ("Expected } after "+funcName+" function call in "+new String(cb, 0, nbRead));
+                            throw new InvalidVariableException("Expected } after "
+                                    + funcName + " function call in " + new String(cb, 0, nbRead));
                         }
                         if (function instanceof TestStateListener) {
                             StandardJMeterEngine.register((TestStateListener) function);
@@ -159,10 +159,10 @@ class FunctionParser {
                 }
             }
         } catch (IOException e) {
-            log.error("Error parsing function: " + buffer.toString(), e);
+            log.error("Error parsing function: {}", buffer, e);
             return null;
         }
-        log.warn("Probably an invalid function string: " + buffer.toString());
+        log.warn("Probably an invalid function string: {}", buffer);
         return buffer.toString();
     }
 
@@ -234,10 +234,10 @@ class FunctionParser {
                 }
             }
         } catch (IOException e) {// Should not happen with StringReader
-            log.error("Error parsing function: " + buffer.toString(), e);
+            log.error("Error parsing function: {}", buffer, e);
         }
         // Dropped out, i.e. did not find closing ')'
-        log.warn("Probably an invalid function string: " + buffer.toString());
+        log.warn("Probably an invalid function string: {}", buffer);
         CompoundVariable var = new CompoundVariable();
         var.setParameters(buffer.toString());
         result.add(var);

@@ -22,8 +22,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.jmeter.util.JMeterUtils;
 
@@ -44,6 +44,9 @@ public class JMeterVariables {
       "TESTSTART.MS", // $NON-NLS-1$
     };
 
+    /**
+     * Constructor, that preloads the variables from the JMeter properties
+     */
     public JMeterVariables() {
         preloadVariables();
     }
@@ -57,23 +60,25 @@ public class JMeterVariables {
         }
     }
 
+    /**
+     * @return the name of the currently running thread 
+     */
     public String getThreadName() {
         return Thread.currentThread().getName();
     }
 
+    /**
+     * @return the current number of iterations
+     */
     public int getIteration() {
         return iteration;
     }
 
+    /**
+     * Increase the current number of iterations
+     */
     public void incIteration() {
         iteration++;
-    }
-
-    // Does not appear to be used
-    @Deprecated
-    public void initialize() {
-        variables.clear();
-        preloadVariables();
     }
 
     /**
@@ -107,22 +112,37 @@ public class JMeterVariables {
         variables.put(key, value);
     }
 
+    /**
+     * Updates the variables with all entries found in the {@link Map} {@code vars}
+     * @param vars map with the entries to be updated
+     */
     public void putAll(Map<String, ?> vars) {
         variables.putAll(vars);
     }
 
+    /**
+     * Updates the variables with all entries found in the variables in {@code vars}
+     * @param vars {@link JMeterVariables} with the entries to be updated
+     */
     public void putAll(JMeterVariables vars) {
         putAll(vars.variables);
     }
 
     /**
-     * Gets the value of a variable, coerced to a String.
+     * Gets the value of a variable, converted to a String.
      * 
      * @param key the name of the variable
-     * @return the value of the variable, or {@code null} if it does not exist
+     * @return the value of the variable or a toString called on it if it's non String, or {@code null} if it does not exist
      */
     public String get(String key) {
-        return (String) variables.get(key);
+        Object o = variables.get(key);
+        if(o instanceof String) {
+            return (String) o;
+        } else if (o != null) {
+            return o.toString();
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -145,6 +165,9 @@ public class JMeterVariables {
     }
 
     // Used by DebugSampler
+    /**
+     * @return an unmodifiable view of the entries contained in {@link JMeterVariables}
+     */
     public Set<Entry<String, Object>> entrySet(){
         return Collections.unmodifiableMap(variables).entrySet();
     }

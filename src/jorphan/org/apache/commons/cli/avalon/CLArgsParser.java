@@ -177,7 +177,7 @@ public final class CLArgsParser {
     }
 
     /**
-     * Retrieve an error message that occured during parsing if one existed.
+     * Retrieve an error message that occurred during parsing if one existed.
      *
      * @return the error string
      */
@@ -603,8 +603,6 @@ public final class CLArgsParser {
                 }
 
                 final String argument = sb.toString();
-
-                // System.out.println( "Arguement:" + argument );
 
                 this.option.addArgument(argument);
                 addOption(this.option);

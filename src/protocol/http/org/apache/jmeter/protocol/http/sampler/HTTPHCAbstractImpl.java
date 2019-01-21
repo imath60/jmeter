@@ -29,9 +29,9 @@ import java.util.StringTokenizer;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.JMeter;
 import org.apache.jmeter.util.JMeterUtils;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Common parent class for HttpClient implementations.
@@ -41,7 +41,9 @@ import org.apache.log.Logger;
  */
 public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HTTPHCAbstractImpl.class);
+
+    protected static final String PROXY_SCHEME = System.getProperty("http.proxyScheme","http");
 
     protected static final String PROXY_HOST = System.getProperty("http.proxyHost","");
 
@@ -59,16 +61,20 @@ public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
 
     protected static final InetAddress localAddress;
 
-    protected static final String localHost;
+    protected static final String LOCALHOST;
 
     protected static final Set<String> nonProxyHostFull = new HashSet<>();
 
     protected static final List<String> nonProxyHostSuffix = new ArrayList<>();
 
-    protected static final int nonProxyHostSuffixSize;
+    protected static final int NON_PROXY_HOST_SUFFIX_SIZE;
 
     protected static final int CPS_HTTP = JMeterUtils.getPropDefault("httpclient.socket.http.cps", 0);
     
+    /**
+     * @deprecated Not used
+     */
+    @Deprecated
     protected static final int CPS_HTTPS = JMeterUtils.getPropDefault("httpclient.socket.https.cps", 0);
 
     protected static final boolean USE_LOOPBACK = JMeterUtils.getPropDefault("httpclient.loopback", false);
@@ -78,35 +84,52 @@ public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
     // -1 means not defined
     protected static final int SO_TIMEOUT = JMeterUtils.getPropDefault("httpclient.timeout", -1);
     
-    // Control reuse of cached SSL Context in subsequent iterations
-    protected static final boolean USE_CACHED_SSL_CONTEXT = 
-            JMeterUtils.getPropDefault("https.use.cached.ssl.context", true);//$NON-NLS-1$
+    /**
+     * Reset HTTP State when starting a new Thread Group iteration
+     */
+    protected static final boolean RESET_STATE_ON_THREAD_GROUP_ITERATION = 
+            JMeterUtils.getPropDefault("httpclient.reset_state_on_thread_group_iteration", true);//$NON-NLS-1$
 
+    /**
+     * Control reuse of cached SSL Context in subsequent iterations
+     * @deprecated use httpclient.reset_state_on_thread_group_iteration instead
+     */
+    @Deprecated
+    protected static final boolean USE_CACHED_SSL_CONTEXT = 
+            JMeterUtils.getPropDefault("https.use.cached.ssl.context", false);//$NON-NLS-1$
+
+    /**
+     *  Whether SSL State/Context should be reset
+     *  Shared state for any HC based implementation, because SSL contexts are the same 
+     */
+    protected static final ThreadLocal<Boolean> resetStateOnThreadGroupIteration =
+            ThreadLocal.withInitial(() -> Boolean.FALSE);
+    
     static {
         if(!StringUtils.isEmpty(JMeterUtils.getProperty("httpclient.timeout"))) { //$NON-NLS-1$
             log.warn("You're using property 'httpclient.timeout' that will soon be deprecated for HttpClient3.1, you should either set "
                     + "timeout in HTTP Request GUI, HTTP Request Defaults or set http.socket.timeout in httpclient.parameters");
         }
-        if (NONPROXY_HOSTS.length() > 0){
+        if (NONPROXY_HOSTS.length() > 0) {
             StringTokenizer s = new StringTokenizer(NONPROXY_HOSTS,"|");// $NON-NLS-1$
-            while (s.hasMoreTokens()){
+            while (s.hasMoreTokens()) {
                 String t = s.nextToken();
-                if (t.indexOf('*') ==0){// e.g. *.apache.org // $NON-NLS-1$
+                if (t.indexOf('*') ==0) {// e.g. *.apache.org // $NON-NLS-1$
                     nonProxyHostSuffix.add(t.substring(1));
                 } else {
                     nonProxyHostFull.add(t);// e.g. www.apache.org
                 }
             }
         }
-        nonProxyHostSuffixSize=nonProxyHostSuffix.size();
+        NON_PROXY_HOST_SUFFIX_SIZE=nonProxyHostSuffix.size();
 
-        InetAddress inet=null;
+        InetAddress inet = null;
         String localHostOrIP =
             JMeterUtils.getPropDefault("httpclient.localaddress",""); // $NON-NLS-1$
-        if (localHostOrIP.length() > 0){
+        if (localHostOrIP.length() > 0) {
             try {
                 inet = InetAddress.getByName(localHostOrIP);
-                log.info("Using localAddress "+inet.getHostAddress());
+                log.info("Using localAddress {}", inet.getHostAddress());
             } catch (UnknownHostException e) {
                 log.warn(e.getLocalizedMessage());
             }
@@ -115,9 +138,8 @@ public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
             localHostOrIP = JMeterUtils.getLocalHostName();
         }
         localAddress = inet;
-        localHost = localHostOrIP;
-        log.info("Local host = "+localHost);
-
+        LOCALHOST = localHostOrIP;
+        log.info("Local host = {}", LOCALHOST);
     }
 
     protected HTTPHCAbstractImpl(HTTPSamplerBase testElement) {
@@ -129,7 +151,7 @@ public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
     }
 
     protected static boolean isPartialMatch(String host) {
-        for (int i=0;i<nonProxyHostSuffixSize;i++){
+        for (int i=0;i<NON_PROXY_HOST_SUFFIX_SIZE;i++){
             if (host.endsWith(nonProxyHostSuffix.get(i))) {
                 return true;
             }
@@ -145,7 +167,7 @@ public abstract class HTTPHCAbstractImpl extends HTTPAbstractImpl {
      * @return {@code true} iff both ProxyPort and ProxyHost are defined.
      */
     protected boolean isDynamicProxy(String proxyHost, int proxyPort){
-        return (!JOrphanUtils.isBlank(proxyHost) && proxyPort > 0);        
+        return !JOrphanUtils.isBlank(proxyHost) && proxyPort > 0;        
     }
 
     /**

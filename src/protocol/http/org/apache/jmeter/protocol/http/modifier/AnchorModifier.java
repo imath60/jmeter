@@ -40,17 +40,15 @@ import org.apache.jmeter.testelement.AbstractTestElement;
 import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.testelement.property.PropertyIterator;
 import org.apache.jmeter.threads.JMeterContext;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-// For Unit tests, @see TestAnchorModifier
-
 public class AnchorModifier extends AbstractTestElement implements PreProcessor, Serializable {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(AnchorModifier.class);
 
     private static final long serialVersionUID = 240L;
 
@@ -65,9 +63,9 @@ public class AnchorModifier extends AbstractTestElement implements PreProcessor,
         JMeterContext context = getThreadContext();
         Sampler sam = context.getCurrentSampler();
         SampleResult res = context.getPreviousResult();
-        HTTPSamplerBase sampler = null;
-        HTTPSampleResult result = null;
-        if (res == null || !(sam instanceof HTTPSamplerBase) || !(res instanceof HTTPSampleResult)) {
+        HTTPSamplerBase sampler;
+        HTTPSampleResult result;
+        if (!(sam instanceof HTTPSamplerBase) || !(res instanceof HTTPSampleResult)) {
             log.info("Can't apply HTML Link Parser when the previous" + " sampler run is not an HTTP Request.");
             return;
         } else {
@@ -87,7 +85,7 @@ public class AnchorModifier extends AbstractTestElement implements PreProcessor,
         addAnchorUrls(html, result, sampler, potentialLinks);
         addFormUrls(html, result, sampler, potentialLinks);
         addFramesetUrls(html, result, sampler, potentialLinks);
-        if (potentialLinks.size() > 0) {
+        if (!potentialLinks.isEmpty()) {
             HTTPSamplerBase url = potentialLinks.get(ThreadLocalRandom.current().nextInt(potentialLinks.size()));
             if (log.isDebugEnabled()) {
                 log.debug("Selected: "+url.toString());
@@ -101,7 +99,6 @@ public class AnchorModifier extends AbstractTestElement implements PreProcessor,
                 }
             } else {
                 sampler.setArguments(url.getArguments());
-                // config.parseArguments(url.getQueryString());
             }
             sampler.setProtocol(url.getProtocol());
         } else {
@@ -127,7 +124,7 @@ public class AnchorModifier extends AbstractTestElement implements PreProcessor,
             }
         }
 
-        if (possibleReplacements.size() > 0) {
+        if (!possibleReplacements.isEmpty()) {
             replacementArg = possibleReplacements.get(ThreadLocalRandom.current().nextInt(possibleReplacements.size()));
             arg.setName(replacementArg.getName());
             arg.setValue(replacementArg.getValue());

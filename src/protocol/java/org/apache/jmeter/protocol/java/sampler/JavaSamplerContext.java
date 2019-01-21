@@ -20,10 +20,16 @@ package org.apache.jmeter.protocol.java.sampler;
 
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Properties;
 
 import org.apache.jmeter.config.Arguments;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.protocol.java.test.JavaTest;
+import org.apache.jmeter.threads.JMeterContext;
+import org.apache.jmeter.threads.JMeterContextService;
+import org.apache.jmeter.threads.JMeterVariables;
+import org.apache.jmeter.util.JMeterUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * JavaSamplerContext is used to provide context information to a
@@ -31,7 +37,6 @@ import org.apache.log.Logger;
  * initialization parameters which were specified in the GUI. Additional data
  * may be accessible through JavaSamplerContext in the future.
  *
- * @version $Revision$
  */
 public class JavaSamplerContext {
     /*
@@ -46,7 +51,7 @@ public class JavaSamplerContext {
      */
 
     /** Logging */
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(JavaTest.class);
 
     /**
      * Map containing the initialization parameters for the JavaSamplerClient.
@@ -223,4 +228,27 @@ public class JavaSamplerContext {
             return defaultValue;
         }
     }
+    
+    /**
+     * 
+     * @return {@link JMeterContext}
+     */
+    public JMeterContext getJMeterContext() {
+        return JMeterContextService.getContext();
+    }
+    /**
+     * @return {@link JMeterVariables}
+     */
+    public final JMeterVariables getJMeterVariables() {
+        return JMeterContextService.getContext().getVariables();
+    }
+    
+    /**
+     * 
+     * @return {@link Properties} JMeter properties
+     */
+    public final Properties getJMeterProperties() {
+        return JMeterUtils.getJMeterProperties();
+    }
+    
 }

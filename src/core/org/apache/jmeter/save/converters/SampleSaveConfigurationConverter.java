@@ -58,6 +58,7 @@ public class SampleSaveConfigurationConverter  extends ReflectionConverter {
     private static final String NODE_HOSTNAME = "hostname"; // $NON-NLS-1$
     private static final String NODE_URL = "url"; // $NON-NLS-1$
     private static final String NODE_BYTES = "bytes"; // $NON-NLS-1$
+    private static final String NODE_SENT_BYTES = "sentBytes"; // $NON-NLS-1$
     private static final String NODE_THREAD_COUNT = "threadCounts"; // $NON-NLS-1$
     private static final String NODE_SAMPLE_COUNT = "sampleCount"; // $NON-NLS-1$
     private static final String NODE_IDLE_TIME = "idleTime"; // $NON-NLS-1$
@@ -68,7 +69,7 @@ public class SampleSaveConfigurationConverter  extends ReflectionConverter {
     private static final String NODE_PRINTMS = "printMilliseconds"; // $NON-NLS-1$
 
 
-    static class MyWrapper extends MapperWrapper{
+    static class MyWrapper extends MapperWrapper {
 
         public MyWrapper(Mapper wrapped) {
             super(wrapped);
@@ -78,24 +79,29 @@ public class SampleSaveConfigurationConverter  extends ReflectionConverter {
         @Override
         public boolean shouldSerializeMember(
                 @SuppressWarnings("rawtypes") // superclass does not use types
-                Class definedIn, 
-                String fieldName) {
-            if (SampleSaveConfiguration.class != definedIn) { return true; }
+                Class definedIn, String fieldName) {
+            if (SampleSaveConfiguration.class != definedIn) {
+                return true;
+            }
             // These are new fields; not saved unless true
             // This list MUST agree with the list in the marshall() method below
-            if (fieldName.equals(NODE_BYTES)) { return false; }
-            if (fieldName.equals(NODE_URL)) { return false; }
-            if (fieldName.equals(NODE_FILENAME)) { return false; }
-            if (fieldName.equals(NODE_HOSTNAME)) { return false; }
-            if (fieldName.equals(NODE_THREAD_COUNT)) { return false; }
-            if (fieldName.equals(NODE_SAMPLE_COUNT)) { return false; }
-            if (fieldName.equals(NODE_IDLE_TIME)) { return false; }
-            if (fieldName.equals(NODE_CONNECT_TIME)) { return false; }
-
-            // These fields are not currently saved or restored
-            if (fieldName.equals(NODE_DELIMITER)) { return false; }
-            if (fieldName.equals(NODE_PRINTMS)) { return false; }
-            return true;
+            switch (fieldName) {
+                case NODE_BYTES:
+                case NODE_SENT_BYTES:
+                case NODE_URL:
+                case NODE_FILENAME:
+                case NODE_HOSTNAME:
+                case NODE_THREAD_COUNT:
+                case NODE_SAMPLE_COUNT:
+                case NODE_IDLE_TIME:
+                case NODE_CONNECT_TIME:
+                // The two fields below are not currently saved or restored
+                case NODE_DELIMITER:
+                case NODE_PRINTMS:
+                    return false;
+                default:
+                    return true;
+            }
         }
     }
 
@@ -129,6 +135,7 @@ public class SampleSaveConfigurationConverter  extends ReflectionConverter {
         // Save the new fields - but only if they are true
         // This list MUST agree with the list in MyWrapper#shouldSerializeMember()
         createNode(writer,prop.saveBytes(),NODE_BYTES);
+        createNode(writer,prop.saveSentBytes(),NODE_SENT_BYTES);
         createNode(writer,prop.saveUrl(),NODE_URL);
         createNode(writer,prop.saveFileName(),NODE_FILENAME);
         createNode(writer,prop.saveHostname(),NODE_HOSTNAME);

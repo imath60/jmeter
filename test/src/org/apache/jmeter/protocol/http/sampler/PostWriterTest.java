@@ -19,6 +19,7 @@
 package org.apache.jmeter.protocol.http.sampler;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 import java.io.ByteArrayOutputStream;
@@ -34,20 +35,21 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.protocol.http.util.HTTPArgument;
 import org.apache.jmeter.protocol.http.util.HTTPConstants;
 import org.apache.jmeter.protocol.http.util.HTTPFileArg;
-import org.apache.jorphan.logging.LoggingManager;
 import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PostWriterTest {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(PostWriterTest.class);
 
     private static final String UTF_8 = "UTF-8";
     private static final String HTTP_ENCODING = "ISO-8859-1";
@@ -163,6 +165,7 @@ public class PostWriterTest {
     @Test
     public void testSendPostData_NoFilename() throws IOException {
         setupNoFilename(sampler);
+        sampler.setMethod(HTTPConstants.POST);
         String titleValue = "mytitle";
         String descriptionValue = "mydescription";
         setupFormData(sampler, titleValue, descriptionValue);
@@ -173,7 +176,7 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         byte[] expectedUrl = "title=mytitle&description=mydescription".getBytes(); // TODO - charset?
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -189,7 +192,7 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         expectedUrl = "title=mytitle&description=mydescription".getBytes(contentEncoding);
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -205,6 +208,7 @@ public class PostWriterTest {
      */
     @Test
     public void testSendPostData_FileAsBody() throws IOException {
+        sampler.setMethod(HTTPConstants.POST);
         setupFilepart(sampler, "", temporaryFile, "");
         
         // Check using default encoding
@@ -219,13 +223,13 @@ public class PostWriterTest {
         
         String otherEncoding;
         final String fileEncoding = System.getProperty( "file.encoding");// $NON-NLS-1$
-        log.info("file.encoding: "+fileEncoding);
+        log.info("file.encoding: {}", fileEncoding);
         if (UTF_8.equalsIgnoreCase(fileEncoding) || "UTF8".equalsIgnoreCase(fileEncoding)){// $NON-NLS-1$
             otherEncoding="ISO-8859-1"; // $NON-NLS-1$
         } else {
             otherEncoding=UTF_8;
         }
-        log.info("Using other encoding: "+otherEncoding);
+        log.info("Using other encoding: {}", otherEncoding);
         establishConnection();
         sampler.setContentEncoding(otherEncoding);
         // File content is sent as binary, so the content encoding should not change the file data
@@ -245,7 +249,7 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         byte[] expectedUrl = "title=mytitle&description=mydescription".getBytes(); // TODO - charset?
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -319,7 +323,7 @@ public class PostWriterTest {
         String descriptionValue = "mydescription";
         setupFormData(sampler, titleValue, descriptionValue);
         // Tell sampler to do multipart, even if we have no files to upload
-        sampler.setDoMultipartPost(true);
+        sampler.setDoMultipart(true);
 
         // Test sending data with default encoding
         String contentEncoding = "";
@@ -328,7 +332,9 @@ public class PostWriterTest {
         postWriter.sendPostData(connection, sampler);
 
         checkContentTypeMultipart(connection, PostWriter.BOUNDARY);
-        byte[] expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY, null, titleField, titleValue, descriptionField, descriptionValue, true, true);
+        byte[] expectedFormBody = createExpectedFormdataOutput(
+                PostWriter.BOUNDARY, null, titleField, titleValue,
+                descriptionField, descriptionValue, true, true);
         checkContentLength(connection, expectedFormBody.length);
         checkArraysHaveSameContent(expectedFormBody, connection.getOutputStreamContent());
         connection.disconnect();
@@ -341,7 +347,9 @@ public class PostWriterTest {
         postWriter.sendPostData(connection, sampler);
 
         checkContentTypeMultipart(connection, PostWriter.BOUNDARY);
-        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY, contentEncoding, titleField, titleValue, descriptionField, descriptionValue, true, true);
+        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY,
+                contentEncoding, titleField, titleValue, descriptionField,
+                descriptionValue, true, true);
         checkContentLength(connection, expectedFormBody.length);
         checkArraysHaveSameContent(expectedFormBody, connection.getOutputStreamContent());
         connection.disconnect();
@@ -357,7 +365,9 @@ public class PostWriterTest {
         postWriter.sendPostData(connection, sampler);
 
         checkContentTypeMultipart(connection, PostWriter.BOUNDARY);
-        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY, contentEncoding, titleField, titleValue, descriptionField, descriptionValue, true, true);
+        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY,
+                contentEncoding, titleField, titleValue, descriptionField,
+                descriptionValue, true, true);
         checkContentLength(connection, expectedFormBody.length);
         checkArraysHaveSameContent(expectedFormBody, connection.getOutputStreamContent());
         connection.disconnect();
@@ -373,7 +383,9 @@ public class PostWriterTest {
         postWriter.sendPostData(connection, sampler);
 
         checkContentTypeMultipart(connection, PostWriter.BOUNDARY);
-        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY, contentEncoding, titleField, titleValue, descriptionField, descriptionValue, true, true);
+        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY,
+                contentEncoding, titleField, titleValue, descriptionField,
+                descriptionValue, true, true);
         checkContentLength(connection, expectedFormBody.length);
         checkArraysHaveSameContent(expectedFormBody, connection.getOutputStreamContent());
         connection.disconnect();
@@ -390,7 +402,9 @@ public class PostWriterTest {
         postWriter.sendPostData(connection, sampler);
 
         checkContentTypeMultipart(connection, PostWriter.BOUNDARY);
-        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY, contentEncoding, titleField, titleValue, descriptionField, descriptionValue, true, true);
+        expectedFormBody = createExpectedFormdataOutput(PostWriter.BOUNDARY,
+                contentEncoding, titleField, titleValue, descriptionField,
+                descriptionValue, true, true);
         checkContentLength(connection, expectedFormBody.length);
         checkArraysHaveSameContent(expectedFormBody, connection.getOutputStreamContent());
         connection.disconnect();
@@ -408,11 +422,12 @@ public class PostWriterTest {
 
         // Test sending data with default encoding
         String contentEncoding = "";
-        sampler.setContentEncoding(contentEncoding);        
+        sampler.setContentEncoding(contentEncoding);
+        sampler.setMethod(HTTPConstants.POST);
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         byte[] expectedUrl = ("title=" + titleValue + "&description=" + descriptionValue).getBytes("US-ASCII");        
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -428,7 +443,7 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         expectedUrl = new StringBuilder("title=").append(titleValue).append("&description=")
                 .append(descriptionValue).toString().getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
@@ -448,8 +463,11 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
-        String expectedString = "title=" + URLEncoder.encode(titleValue, contentEncoding) + "&description=" + URLEncoder.encode(descriptionValue, contentEncoding);
+        checkNoContentType(connection);
+        String expectedString = "title="
+                + URLEncoder.encode(titleValue, contentEncoding)
+                + "&description="
+                + URLEncoder.encode(descriptionValue, contentEncoding);
         expectedUrl = expectedString.getBytes(contentEncoding);
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -471,8 +489,11 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
-        expectedString = "title=" + URLEncoder.encode(titleValue, contentEncoding) + "&description=" + URLEncoder.encode(descriptionValue, contentEncoding);
+        checkNoContentType(connection);
+        expectedString = "title="
+                + URLEncoder.encode(titleValue, contentEncoding)
+                + "&description="
+                + URLEncoder.encode(descriptionValue, contentEncoding);
         expectedUrl = expectedString.getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
@@ -491,7 +512,7 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
 
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         expectedString = "title=" + URLEncoder.encode(titleValue, UTF_8) + "&description=" + URLEncoder.encode(descriptionValue, UTF_8);
         expectedUrl = expectedString.getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
@@ -519,15 +540,16 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         StringBuilder sb = new StringBuilder();
-        expectedUrl = (sb.append("title=").append(titleValue.replaceAll("%20", "+").replaceAll("%C3%85", "%C5"))
-                .append("&description=").append(descriptionValue.replaceAll("%C3%85", "%C5"))).toString().getBytes("US-ASCII");
+        expectedUrl = sb.append("title=").append(titleValue.replaceAll("%20", "+").replaceAll("%C3%85", "%C5"))
+                .append("&description=").append(descriptionValue.replaceAll("%C3%85", "%C5")).toString().getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
         assertEquals(
-                URLDecoder.decode(new String(expectedUrl, "US-ASCII"), "ISO-8859-1"), // HTTPSampler uses ISO-8859-1 as default encoding
-                URLDecoder.decode(new String(connection.getOutputStreamContent(), "US-ASCII"), "ISO-8859-1")); // HTTPSampler uses ISO-8859-1 as default encoding
+                // HTTPSampler uses ISO-8859-1 as default encoding
+                URLDecoder.decode(new String(expectedUrl, "US-ASCII"), "ISO-8859-1"), 
+                URLDecoder.decode(new String(connection.getOutputStreamContent(), "US-ASCII"), "ISO-8859-1"));
         connection.disconnect();
 
         // Test sending data as ISO-8859-1
@@ -537,10 +559,10 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         sb = new StringBuilder();
-        expectedUrl = (sb.append("title=").append(titleValue.replaceAll("%20", "+").replaceAll("%C3%85", "%C5"))
-                .append("&description=").append(descriptionValue.replaceAll("%C3%85", "%C5"))).toString().getBytes("US-ASCII");
+        expectedUrl = sb.append("title=").append(titleValue.replaceAll("%20", "+").replaceAll("%C3%85", "%C5"))
+                .append("&description=").append(descriptionValue.replaceAll("%C3%85", "%C5")).toString().getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
         assertEquals(
@@ -555,9 +577,12 @@ public class PostWriterTest {
         postWriter.setHeaders(connection, sampler);
         postWriter.sendPostData(connection, sampler);
         
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         sb = new StringBuilder();
-        expectedUrl = (sb.append("title=").append(titleValue.replaceAll("%20", "+")).append("&description=").append(descriptionValue)).toString().getBytes("US-ASCII");
+        expectedUrl = sb.append("title=")
+                .append(titleValue.replaceAll("%20", "+"))
+                .append("&description=").append(descriptionValue).toString()
+                .getBytes("US-ASCII");
         checkContentLength(connection, expectedUrl.length);
         checkArraysHaveSameContent(expectedUrl, connection.getOutputStreamContent());
         assertEquals(
@@ -584,11 +609,12 @@ public class PostWriterTest {
      */
     @Test
     public void testSetHeaders_NoFilename() throws IOException {
+        sampler.setMethod(HTTPConstants.POST);
         setupNoFilename(sampler);
         setupFormData(sampler);
         
         postWriter.setHeaders(connection, sampler);
-        checkContentTypeUrlEncoded(connection);
+        checkNoContentType(connection);
         checkContentLength(connection, "title=mytitle&description=mydescription".length());
     }
 
@@ -666,7 +692,9 @@ public class PostWriterTest {
             String titleValue,
             String descriptionValue,
             byte[] fileContent) throws IOException {
-        return createExpectedOutput(boundaryString, contentEncoding, "title", titleValue, "description", descriptionValue, "upload", fileContent);
+        return createExpectedOutput(boundaryString, contentEncoding, "title",
+                titleValue, "description", descriptionValue, "upload",
+                fileContent);
     }
 
     /**
@@ -683,8 +711,12 @@ public class PostWriterTest {
             String fileField,
             byte[] fileContent) throws IOException {
         // Create the multiparts
-        byte[] formdataMultipart = createExpectedFormdataOutput(boundaryString, contentEncoding, titleField, titleValue, descriptionField, descriptionValue, true, false);
-        byte[] fileMultipart = createExpectedFilepartOutput(boundaryString, fileField, temporaryFile, "text/plain", fileContent, false, true);
+        byte[] formdataMultipart = createExpectedFormdataOutput(boundaryString,
+                contentEncoding, titleField, titleValue, descriptionField,
+                descriptionValue, true, false);
+        byte[] fileMultipart = createExpectedFilepartOutput(boundaryString,
+                fileField, temporaryFile, "text/plain", fileContent, false,
+                true);
         
         // Join the two multiparts
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -827,7 +859,7 @@ public class PostWriterTest {
     }
 
     /**
-     * Check that the the two byte arrays have identical content
+     * Check that the two byte arrays have identical content
      * 
      * @param expected
      * @param actual
@@ -860,7 +892,7 @@ public class PostWriterTest {
     }
 
     /**
-     * Check that the the two byte arrays different content
+     * Check that the two byte arrays different content
      * 
      * @param expected
      * @param actual
@@ -889,6 +921,9 @@ public class PostWriterTest {
         assertEquals("multipart/form-data; boundary=" + boundaryString, conn.getRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE));
     }
 
+    private void checkNoContentType(HttpURLConnection conn) {
+        assertNull(conn.getRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE));
+    }
     private void checkContentTypeUrlEncoded(HttpURLConnection conn) {
         assertEquals(HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED, conn.getRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE));
     }

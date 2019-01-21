@@ -29,6 +29,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.util.function.Predicate;
 
 import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.protocol.http.control.AuthManager;
@@ -36,6 +37,7 @@ import org.apache.jmeter.protocol.http.control.CacheManager;
 import org.apache.jmeter.protocol.http.control.CookieManager;
 import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase.SourceType;
+import org.apache.jmeter.protocol.http.util.HTTPConstants;
 import org.apache.jmeter.protocol.http.util.HTTPConstantsInterface;
 import org.apache.jmeter.protocol.http.util.HTTPFileArg;
 import org.apache.jmeter.samplers.Interruptible;
@@ -53,7 +55,15 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
     }
 
     /**
-     * If true create a SampleResult with emply content and 204 response code 
+     * Should we add to POST request content-type header if missing:
+     * Content-Type: application/x-www-form-urlencoded
+     */
+    protected static final boolean ADD_CONTENT_TYPE_TO_POST_IF_MISSING = 
+            JMeterUtils.getPropDefault("http.post_add_content_type_if_missing", //$NON-NLS-1$
+                    false);
+
+    /**
+     * If true create a SampleResult with empty content and 204 response code 
      */
     private static final CachedResourceMode CACHED_RESOURCE_MODE = 
             CachedResourceMode.valueOf(
@@ -71,6 +81,10 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      */
     private static final String RETURN_CUSTOM_STATUS_CODE = 
             JMeterUtils.getProperty("RETURN_CUSTOM_STATUS.code");//$NON-NLS-1$
+
+    protected static final Predicate<String> ALL_EXCEPT_COOKIE = s -> !HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(s);
+    
+    protected static final Predicate<String> ONLY_COOKIE = s -> HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(s);
 
     /**
      * Custom response message for cached resource
@@ -254,6 +268,15 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
     }
 
     /**
+     * Invokes {@link HTTPSamplerBase#getProxyScheme()}
+     *
+     * @return the configured host scheme to use for proxy
+     */
+    protected String getProxyScheme() {
+        return testElement.getProxyScheme();
+    }
+
+    /**
      * Invokes {@link HTTPSamplerBase#getProxyHost()}
      *
      * @return the configured host to use as a proxy
@@ -339,9 +362,23 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      *
      * @return <code>true</code> if <code>multipart/form-data</code> should be
      *         used and method is POST
+     * @deprecated Use {@link HTTPAbstractImpl#getUseMultipart()}
      */
+    @Deprecated
     protected boolean getUseMultipartForPost() {
         return testElement.getUseMultipartForPost();
+    }
+    
+    /**
+     * Determine if we should use <code>multipart/form-data</code> or
+     * <code>application/x-www-form-urlencoded</code> for the method
+     * <p>
+     * Invokes {@link HTTPSamplerBase#getUseMultipart()}
+     *
+     * @return <code>true</code> if <code>multipart/form-data</code> should be used 
+     */
+    protected boolean getUseMultipart() {
+        return testElement.getUseMultipart();
     }
 
     /**
@@ -366,9 +403,11 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      * Invokes {@link HTTPSamplerBase#isMonitor()}
      *
      * @return flag whether monitor is enabled
+     * @deprecated since 3.2 always return false
      */
+    @Deprecated
     protected boolean isMonitor() {
-        return testElement.isMonitor();
+        return false;
     }
 
     /**
@@ -395,7 +434,7 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      * Closes the inputStream
      * <p>
      * Invokes
-     * {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, int)}
+     * {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, long)}
      * 
      * @param res
      *            sample to store information about the response into
@@ -409,6 +448,32 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      */
     protected byte[] readResponse(SampleResult res, InputStream instream,
             int responseContentLength) throws IOException {
+        return readResponse(res, instream, (long)responseContentLength);
+    }
+    /**
+     * Read response from the input stream, converting to MD5 digest if the
+     * useMD5 property is set.
+     * <p>
+     * For the MD5 case, the result byte count is set to the size of the
+     * original response.
+     * <p>
+     * Closes the inputStream
+     * <p>
+     * Invokes
+     * {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, long)}
+     * 
+     * @param res
+     *            sample to store information about the response into
+     * @param instream
+     *            input stream from which to read the response
+     * @param responseContentLength
+     *            expected input length or zero
+     * @return the response or the MD5 of the response
+     * @throws IOException
+     *             if reading the result fails
+     */
+    protected byte[] readResponse(SampleResult res, InputStream instream,
+            long responseContentLength) throws IOException {
         return testElement.readResponse(res, instream, responseContentLength);
     }
 
@@ -421,7 +486,35 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      * <p>
      * Closes the inputStream
      * <p>
-     * Invokes {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, int)}
+     * Invokes {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, long)}
+     * 
+     * @param res
+     *            sample to store information about the response into
+     * @param in
+     *            input stream from which to read the response
+     * @param contentLength
+     *            expected input length or zero
+     * @return the response or the MD5 of the response
+     * @throws IOException
+     *             when reading the result fails
+     * @deprecated use {@link HTTPAbstractImpl#readResponse(SampleResult, BufferedInputStream, long)}
+     */
+    @Deprecated
+    protected byte[] readResponse(SampleResult res, BufferedInputStream in,
+            int contentLength) throws IOException {
+        return testElement.readResponse(res, in, contentLength);
+    }
+    
+    /**
+     * Read response from the input stream, converting to MD5 digest if the
+     * useMD5 property is set.
+     * <p>
+     * For the MD5 case, the result byte count is set to the size of the
+     * original response.
+     * <p>
+     * Closes the inputStream
+     * <p>
+     * Invokes {@link HTTPSamplerBase#readResponse(SampleResult, InputStream, long)}
      * 
      * @param res
      *            sample to store information about the response into
@@ -434,7 +527,7 @@ public abstract class HTTPAbstractImpl implements Interruptible, HTTPConstantsIn
      *             when reading the result fails
      */
     protected byte[] readResponse(SampleResult res, BufferedInputStream in,
-            int contentLength) throws IOException {
+            long contentLength) throws IOException {
         return testElement.readResponse(res, in, contentLength);
     }
 

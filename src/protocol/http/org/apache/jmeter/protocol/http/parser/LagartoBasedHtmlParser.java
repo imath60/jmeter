@@ -20,34 +20,34 @@ package org.apache.jmeter.protocol.http.parser;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.Iterator;
-import java.util.Stack;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.jmeter.protocol.http.util.ConversionUtils;
+import org.slf4j.Logger;
 
 import jodd.lagarto.EmptyTagVisitor;
 import jodd.lagarto.LagartoException;
 import jodd.lagarto.LagartoParser;
-import jodd.lagarto.LagartoParserConfig;
 import jodd.lagarto.Tag;
 import jodd.lagarto.TagType;
-import jodd.lagarto.TagUtil;
 import jodd.lagarto.dom.HtmlCCommentExpressionMatcher;
+import jodd.lagarto.dom.LagartoDomBuilderConfig;
 import jodd.log.LoggerFactory;
-import jodd.log.impl.Slf4jLoggerFactory;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.jmeter.protocol.http.util.ConversionUtils;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import jodd.log.impl.Slf4jLogger;
+import jodd.util.CharSequenceUtil;
 
 /**
  * Parser based on Lagarto
  * @since 2.10
  */
 public class LagartoBasedHtmlParser extends HTMLParser {
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(LagartoBasedHtmlParser.class);
     static {
-        LoggerFactory.setLoggerFactory(new Slf4jLoggerFactory());
+        LoggerFactory.setLoggerProvider(Slf4jLogger.PROVIDER);
     }
 
     /*
@@ -65,7 +65,7 @@ public class LagartoBasedHtmlParser extends HTMLParser {
         private URLCollection urls;
         private URLPointer baseUrl;
         private Float ieVersion;
-        private Stack<Boolean> enabled = new Stack<>();
+        private Deque<Boolean> enabled = new ArrayDeque<>();
 
         /**
          * @param baseUrl base url to add possibly missing information to urls found in <code>urls</code>
@@ -80,10 +80,12 @@ public class LagartoBasedHtmlParser extends HTMLParser {
 
         private void extractAttribute(Tag tag, String attributeName) {
             CharSequence url = tag.getAttributeValue(attributeName);
-            if (!StringUtils.isEmpty(url)) {
-                urls.addURL(url.toString(), baseUrl.url);
+            String normalizedUrl = normalizeUrlValue(url);
+            if(normalizedUrl != null) {
+                urls.addURL(normalizedUrl, baseUrl.url);
             }
         }
+        
         /*
          * (non-Javadoc)
          * 
@@ -122,7 +124,7 @@ public class LagartoBasedHtmlParser extends HTMLParser {
                             baseUrl.url = ConversionUtils.makeRelativeURL(baseUrl.url, baseref.toString());
                         }
                     } catch (MalformedURLException e1) {
-                        throw new RuntimeException(e1);
+                        throw new IllegalArgumentException("Error creating relative url from " + baseref, e1);
                     }
                 } else if (tag.nameEquals(TAG_IMAGE)) {
                     extractAttribute(tag, ATT_SRC);
@@ -134,7 +136,7 @@ public class LagartoBasedHtmlParser extends HTMLParser {
                 } else if (tag.nameEquals(TAG_INPUT)) {
                     // we check the input tag type for image
                     CharSequence type = tag.getAttributeValue(ATT_TYPE);
-                    if (type != null && TagUtil.equalsIgnoreCase(ATT_IS_IMAGE, type)) {
+                    if (type != null && CharSequenceUtil.equalsIgnoreCase(ATT_IS_IMAGE, type)) {
                         // then we need to download the binary
                         extractAttribute(tag, ATT_SRC);
                     }
@@ -150,14 +152,15 @@ public class LagartoBasedHtmlParser extends HTMLParser {
                 } else if (tag.nameEquals(TAG_LINK)) {
                     CharSequence relAttribute = tag.getAttributeValue(ATT_REL);
                     // Putting the string first means it works even if the attribute is null
-                    if (relAttribute != null && TagUtil.equalsIgnoreCase(STYLESHEET,relAttribute)) {
+                    if (relAttribute != null && 
+                            (CharSequenceUtil.equalsIgnoreCase(STYLESHEET,relAttribute)
+                                    || CharSequenceUtil.equalsIgnoreCase(ICON, relAttribute) 
+                                    || CharSequenceUtil.equalsIgnoreCase(SHORTCUT_ICON, relAttribute))) {
                         extractAttribute(tag, ATT_HREF);
                     }
                 } else {
                     extractAttribute(tag, ATT_BACKGROUND);
                 }
-    
-    
                 // Now look for URLs in the STYLE attribute
                 CharSequence styleTagStr = tag.getAttributeValue(ATT_STYLE);
                 if(!StringUtils.isEmpty(styleTagStr)) {
@@ -208,13 +211,14 @@ public class LagartoBasedHtmlParser extends HTMLParser {
             Float ieVersion = extractIEVersion(userAgent);
             
             String contents = new String(html,encoding); 
-            // As per Jodd javadocs, emitStrings should be false for visitor for better performances
-            LagartoParser lagartoParser = new LagartoParser(contents, false);
-            LagartoParserConfig<LagartoParserConfig<?>> config = new LagartoParserConfig<>();
+            LagartoParser lagartoParser = new LagartoParser(contents.toCharArray());
+            LagartoDomBuilderConfig config = new LagartoDomBuilderConfig();
             config.setCaseSensitive(false);
             // Conditional comments only apply for IE < 10
             config.setEnableConditionalComments(isEnableConditionalComments(ieVersion));
-            
+            if(ieVersion != null) {
+                config.setCondCommentIEVersion(ieVersion);
+            }
             lagartoParser.setConfig(config);
             JMeterTagVisitor tagVisitor = new JMeterTagVisitor(new URLPointer(baseUrl), coll, ieVersion);
             lagartoParser.parse(tagVisitor);

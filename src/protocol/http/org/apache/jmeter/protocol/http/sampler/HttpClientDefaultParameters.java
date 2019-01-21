@@ -1,20 +1,18 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.apache.jmeter.protocol.http.sampler;
@@ -27,19 +25,19 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.jmeter.NewDriver;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.jorphan.util.JOrphanUtils;
-import org.apache.log.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/*
+/**
  * Utility class to set up default HttpClient parameters from a file.
  * 
- * Supports both Commons HttpClient and Apache HttpClient.
- * 
+ * Supports Apache HttpClient.
+ * @deprecated since 5.0
  */
+@Deprecated
 public class HttpClientDefaultParameters {
 
-    private static final Logger log = LoggingManager.getLoggerForClass();
+    private static final Logger log = LoggerFactory.getLogger(HttpClientDefaultParameters.class);
 
     // Non-instantiable
     private HttpClientDefaultParameters(){
@@ -55,37 +53,12 @@ public class HttpClientDefaultParameters {
      * Loads a property file and converts parameters as necessary.
      * 
      * @param file the file to load
-     * @param params Commons HttpClient parameter instance
-     * @deprecated HC3.1 will be dropped in upcoming version
-     */
-    @Deprecated
-    public static void load(String file, 
-            final org.apache.commons.httpclient.params.HttpParams params){
-        load(file, 
-                new GenericHttpParams (){
-                    @Override
-                    public void setParameter(String name, Object value) {
-                        params.setParameter(name, value);
-                    }
-                    @Override
-                    public void setVersion(String name, String value) throws Exception {
-                        params.setParameter(name,
-                        org.apache.commons.httpclient.HttpVersion.parse("HTTP/"+value));
-                    }            
-                }
-            );
-    }
-
-    /**
-     * Loads a property file and converts parameters as necessary.
-     * 
-     * @param file the file to load
      * @param params Apache HttpClient parameter instance
      */
     public static void load(String file, 
             final org.apache.http.params.HttpParams params){
-        load(file, 
-                new GenericHttpParams (){
+        load(file,
+                new GenericHttpParams() {
                     @Override
                     public void setParameter(String name, Object value) {
                         params.setParameter(name, value);
@@ -100,7 +73,7 @@ public class HttpClientDefaultParameters {
                         params.setParameter(name,
                                 new org.apache.http.HttpVersion(
                                         Integer.parseInt(parts[0]), Integer.parseInt(parts[1])));
-                    }            
+                    }
                 }
             );
     }
@@ -118,10 +91,8 @@ public class HttpClientDefaultParameters {
             }
         }
         log.info("Reading httpclient parameters from "+f.getAbsolutePath());
-        InputStream is = null;
         Properties props = new Properties();
-        try {
-            is = new FileInputStream(f);
+        try ( InputStream is = new FileInputStream(f) ){
             props.load(is);
             for (Map.Entry<Object, Object> me : props.entrySet()){
                 String key = (String) me.getKey();
@@ -153,9 +124,6 @@ public class HttpClientDefaultParameters {
             }
         } catch (IOException e) {
             log.error("Problem loading properties "+e.toString());
-        } finally {
-            JOrphanUtils.closeQuietly(is);
         }
     }
-
 }

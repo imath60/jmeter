@@ -19,35 +19,33 @@
 package org.apache.jmeter.functions;
 
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
-import junit.framework.Test;
-import junit.framework.TestSuite;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.engine.util.CompoundVariable;
 import org.apache.jmeter.junit.JMeterTest;
-import org.apache.jmeter.junit.JMeterTestCaseJUnit3;
-import org.apache.jorphan.logging.LoggingManager;
-import org.apache.log.Logger;
+import org.apache.jmeter.junit.JMeterTestCaseJUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
-public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit3 {
+import junit.framework.Test;
+import junit.framework.TestSuite;
 
-    private static final Logger LOG = LoggingManager.getLoggerForClass();
+public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit {
+
+    private static final Logger log = LoggerFactory.getLogger(ComponentReferenceFunctionTest.class);
     
     private static Map<String, Boolean> funcTitles;
     
@@ -68,9 +66,7 @@ public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit3 {
      */
     private static Test suiteFunctions() throws Exception {
         TestSuite suite = new TestSuite("Functions");
-        Iterator<Object> iter = JMeterTest.getObjects(Function.class).iterator();
-        while (iter.hasNext()) {
-            Object item = iter.next();
+        for (Object item : JMeterTest.getObjects(Function.class)) {
             if (item.getClass().equals(CompoundVariable.class)) {
                 continue;
             }
@@ -83,7 +79,7 @@ public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit3 {
     }
     
     private Element getBodyFromXMLDocument(InputStream stream)
-            throws ParserConfigurationException, FileNotFoundException, SAXException, IOException {
+            throws ParserConfigurationException, SAXException, IOException {
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setIgnoringElementContentWhitespace(true);
         dbf.setIgnoringComments(true);
@@ -133,13 +129,12 @@ public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit3 {
             if (ct) {
                 funcTitles.put(title, Boolean.TRUE);// For detecting extra entries
             }
-            if (// Is this a work in progress ?
-            title.indexOf("(ALPHA") == -1 && title.indexOf("(EXPERIMENTAL") == -1) {// No, not a
-                                                                                    // work in progress
-                                                                                    // ...
-                String s = "function.xml needs '" + title + "' entry for " + funcItem.getClass().getName();
+            // Is this a work in progress ?
+            if (!title.contains("(ALPHA") && !title.contains("(EXPERIMENTAL")) {
+                // No, not a work in progress ...
+                String s = "functions.xml needs '" + title + "' entry for " + funcItem.getClass().getName();
                 if (!ct) {
-                    LOG.warn(s); // Record in log as well
+                    log.warn(s); // Record in log as well
                 }
                 assertTrue(s, ct);
             }
@@ -150,9 +145,7 @@ public class ComponentReferenceFunctionTest extends JMeterTestCaseJUnit3 {
      * Check that function descriptions are OK
      */
     public void runFunction2() throws Exception {
-        Iterator<?> i = funcItem.getArgumentDesc().iterator();
-        while (i.hasNext()) {
-            Object o = i.next();
+        for (Object o : funcItem.getArgumentDesc()) {
             assertTrue("Description must be a String", o instanceof String);
             assertFalse("Description must not start with [refkey", ((String) o).startsWith("[refkey"));
         }

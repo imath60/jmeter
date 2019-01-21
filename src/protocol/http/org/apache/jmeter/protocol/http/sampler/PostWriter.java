@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.jmeter.protocol.http.util.HTTPArgument;
 import org.apache.jmeter.protocol.http.util.HTTPConstants;
@@ -49,7 +50,7 @@ public class PostWriter {
 
     private static final byte[] CRLF = { 0x0d, 0x0A };
 
-    public static final String ENCODING = "ISO-8859-1"; // $NON-NLS-1$
+    public static final String ENCODING = StandardCharsets.ISO_8859_1.name();
 
     /** The form data that is going to be sent as url encoded */
     protected byte[] formDataUrlEncoded;
@@ -100,7 +101,7 @@ public class PostWriter {
 
         // Check if we should do a multipart/form-data or an
         // application/x-www-form-urlencoded post request
-        if(sampler.getUseMultipartForPost()) {
+        if(sampler.getUseMultipart()) {
             OutputStream out = connection.getOutputStream();
 
             // Write the form data post body, which we have constructed
@@ -179,7 +180,7 @@ public class PostWriter {
 
         // Check if we should do a multipart/form-data or an
         // application/x-www-form-urlencoded post request
-        if(sampler.getUseMultipartForPost()) {
+        if(sampler.getUseMultipart()) {
             // Set the content type
             connection.setRequestProperty(
                     HTTPConstants.HEADER_CONTENT_TYPE,
@@ -265,7 +266,9 @@ public class PostWriter {
                         connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, file.getMimeType());
                     }
                     else {
-                        connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
+                        if(HTTPAbstractImpl.ADD_CONTENT_TYPE_TO_POST_IF_MISSING) {
+                            connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
+                        }
                     }
                 }
                 // Create the content length we are going to write
@@ -281,7 +284,7 @@ public class PostWriter {
                 String postBody = null;
                 if(!sampler.getSendParameterValuesAsPostBody()) {
                     // Set the content type
-                    if(!hasContentTypeHeader) {
+                    if(!hasContentTypeHeader && HTTPAbstractImpl.ADD_CONTENT_TYPE_TO_POST_IF_MISSING) {
                         connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
                     }
 
@@ -299,8 +302,9 @@ public class PostWriter {
                             connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, file.getMimeType());
                         }
                         else {
-                            // TODO: is this the correct default?
-                            connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
+                            if(HTTPAbstractImpl.ADD_CONTENT_TYPE_TO_POST_IF_MISSING) {
+                                connection.setRequestProperty(HTTPConstants.HEADER_CONTENT_TYPE, HTTPConstants.APPLICATION_X_WWW_FORM_URLENCODED);
+                            }
                         }
                     }
 
